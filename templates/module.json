@@ -1,0 +1,19 @@
+{
+  "_how_to_use": "Copy the inner object into library/modules.json under a lower-case key like 'brand-modelcode'. Values are STC, front side. Temperature coefficients are %/degC and negative. Set verified=true only if every value was read from the manufacturer datasheet, and cite it in remarks.",
+  "brand-modelcode": {
+    "brand": "Jinko Solar",
+    "model": "Tiger Neo 3.0 JKM650N-66QL6-BDV",
+    "technology": "N-type TOPCon Bifacial",
+    "wattage_wp": 650,
+    "voc": 50.26,
+    "isc": 15.98,
+    "vmp": 42.57,
+    "imp": 15.27,
+    "temp_coeff_voc_pct": -0.24,
+    "temp_coeff_pmax_pct": -0.26,
+    "max_series_fuse_a": 35,
+    "max_system_voltage_v": 1500,
+    "verified": false,
+    "remarks": "Source: <datasheet file name / URL, edition, date>"
+  }
+}

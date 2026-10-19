@@ -1,0 +1,15 @@
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# generated drawings and Python build artefacts
+/output/
+__pycache__/
+*.egg-info/
+build/
+
+# real jobs contain customer names, addresses and TNB account numbers - never commit them
+/projects/*
+!/projects/README.md
+
+# local tool config
+/.ignore

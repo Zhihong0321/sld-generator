@@ -1,0 +1,24 @@
+{
+  "_note": "TEST DATA ONLY - generic equipment values used to exercise the single-phase and string-fuse code paths.",
+  "project": {
+    "account_holder": "TEST CUSTOMER",
+    "address": "TEST ADDRESS",
+    "tnb_account_no": "000000000000",
+    "drawing_no": "TEST-1PH-FUSES",
+    "revision": "00",
+    "date": "2026-10-18"
+  },
+  "supply": { "phase": 1 },
+  "pv_module": {
+    "brand": "GENERIC", "model": "TEST-410", "technology": "Monocrystalline", "wattage_wp": 410,
+    "voc": 37.5, "isc": 13.8, "vmp": 31.5, "imp": 13.0, "temp_coeff_voc_pct": -0.27,
+    "temp_coeff_pmax_pct": -0.34, "max_series_fuse_a": 25
+  },
+  "inverter": {
+    "brand": "GENERIC", "model": "TEST-5K-1P", "phase": 1, "rated_ac_kw": 5.0, "max_ac_current_a": 22.7,
+    "max_dc_voltage_v": 600, "mppt_count": 2, "max_strings_per_mppt": 3, "mppt_voltage_min_v": 80,
+    "mppt_voltage_max_v": 550, "max_input_current_per_mppt_a": 40, "max_isc_per_mppt_a": 45
+  },
+  "array": { "strings": [ { "mppt": 1, "modules": 4, "count": 3 } ] },
+  "cables": { "dc_length_m": 20, "ac_length_m": 25 }
+}

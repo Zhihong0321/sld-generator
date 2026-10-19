@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sld-drawing-ai/schema/project.schema.json",
+  "title": "Solar ATAP SLD project",
+  "description": "One residential GCPV job. Ratings of protective devices and cables are NOT inputs - the engine sizes them.",
+  "type": "object",
+  "required": ["supply", "pv_module", "inverter", "array", "cables"],
+  "properties": {
+    "project": {
+      "type": "object",
+      "description": "Title block. Blank strings are allowed; they print as blanks.",
+      "properties": {
+        "title": { "type": "string" },
+        "account_holder": { "type": "string", "description": "Exactly as on the TNB bill" },
+        "address": { "type": "string" },
+        "tnb_account_no": { "type": "string", "description": "12 digits" },
+        "drawing_no": { "type": "string", "description": "Also names the output folder" },
+        "revision": { "type": "string" },
+        "date": { "type": "string", "description": "YYYY-MM-DD" },
+        "drawn_by": { "type": "string" },
+        "checked_by": { "type": "string" },
+        "approved_by": { "type": "string" }
+      }
+    },
+    "supply": {
+      "type": "object",
+      "required": ["phase"],
+      "properties": { "phase": { "enum": [1, 3] } }
+    },
+    "pv_module": {
+      "description": "Library key (string), {\"ref\": key, ...overrides}, or a full inline module object",
+      "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/module" }, { "type": "object", "required": ["ref"] }]
+    },
+    "inverter": {
+      "description": "Library key (string), {\"ref\": key, ...overrides}, or a full inline inverter object",
+      "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/inverter" }, { "type": "object", "required": ["ref"] }]
+    },
+    "array": {
+      "type": "object",
+      "required": ["strings"],
+      "properties": {
+        "strings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["modules"],
+            "properties": {
+              "mppt": { "type": "integer", "minimum": 1, "default": 1 },
+              "modules": { "type": "integer", "minimum": 1, "description": "Modules in series in this string" },
+              "count": { "type": "integer", "minimum": 1, "default": 1, "description": "Identical parallel strings on this MPPT" }
+            }
+          }
+        }
+      }
+    },
+    "cables": {
+      "type": "object",
+      "required": ["dc_length_m", "ac_length_m"],
+      "properties": {
+        "dc_length_m": { "type": "number", "exclusiveMinimum": 0, "description": "One-way, array to inverter" },
+        "ac_length_m": { "type": "number", "exclusiveMinimum": 0, "description": "Inverter to MDB (PCC)" },
+        "dc_size_mm2": { "type": ["number", "null"], "description": "Force a DC cable size (still checked)" },
+        "ac_size_mm2": { "type": ["number", "null"], "description": "Force an AC cable size (still checked)" }
+      }
+    },
+    "site": {
+      "type": "object",
+      "properties": {
+        "t_min_cell_c": { "type": "number", "default": 15 },
+        "t_max_cell_c": { "type": "number", "default": 70 }
+      }
+    },
+    "pcc": {
+      "type": "object",
+      "properties": {
+        "tnb_cutout_fuse_a": { "type": "number", "default": 60 },
+        "tnb_service_cable": { "type": "string" },
+        "main_switch_a": { "type": "number", "default": 63 },
+        "main_rcd_a": { "type": "number", "default": 63 },
+        "main_rcd_ma": { "type": "number", "default": 100 },
+        "busbar_a": { "type": "number", "default": 100 },
+        "existing_circuits": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["name", "rating_a"],
+            "properties": { "name": { "type": "string" }, "rating_a": { "type": "number" } }
+          }
+        }
+      }
+    },
+    "overrides": {
+      "type": "object",
+      "description": "Force specific ratings. Values below the calculated minimum are rejected.",
+      "properties": {
+        "ac_mcb_a": { "type": "number" },
+        "ac_rcd_a": { "type": "number" },
+        "ac_rcd_ma": { "type": "number" },
+        "ac_isolator_a": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "people": {
+      "type": "object",
+      "description": "Endorsement blocks. Never fill in values the user did not supply.",
+      "properties": {
+        "qp_name": { "type": "string" },
+        "qp_cert_no": { "type": "string" },
+        "rpvsp": { "type": "string" },
+        "cp_name": { "type": "string" },
+        "cp_category": { "type": "string" },
+        "cp_cert_no": { "type": "string" },
+        "contractor_reg_no": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "module": {
+      "type": "object",
+      "required": ["brand", "model", "wattage_wp", "voc", "isc", "vmp", "imp"],
+      "properties": {
+        "brand": { "type": "string" },
+        "model": { "type": "string" },
+        "technology": { "type": "string" },
+        "wattage_wp": { "type": "number" },
+        "voc": { "type": "number", "description": "V, STC" },
+        "isc": { "type": "number", "description": "A, STC" },
+        "vmp": { "type": "number", "description": "V, STC" },
+        "imp": { "type": "number", "description": "A, STC" },
+        "temp_coeff_voc_pct": { "type": "number", "description": "%/degC, negative" },
+        "temp_coeff_pmax_pct": { "type": "number", "description": "%/degC, negative" },
+        "max_series_fuse_a": { "type": "number" },
+        "max_system_voltage_v": { "type": "number" },
+        "verified": { "type": "boolean" },
+        "remarks": { "type": "string" }
+      }
+    },
+    "inverter": {
+      "type": "object",
+      "required": ["brand", "model", "phase", "rated_ac_kw", "max_dc_voltage_v", "mppt_count",
+                   "mppt_voltage_min_v", "mppt_voltage_max_v", "max_isc_per_mppt_a"],
+      "properties": {
+        "brand": { "type": "string" },
+        "model": { "type": "string" },
+        "phase": { "enum": [1, 3] },
+        "rated_ac_kw": { "type": "number" },
+        "max_ac_current_a": { "type": "number" },
+        "max_dc_voltage_v": { "type": "number" },
+        "mppt_count": { "type": "integer" },
+        "max_strings_per_mppt": { "type": "integer" },
+        "mppt_voltage_min_v": { "type": "number" },
+        "mppt_voltage_max_v": { "type": "number" },
+        "max_input_current_per_mppt_a": { "type": "number" },
+        "max_isc_per_mppt_a": { "type": "number" },
+        "power_factor": { "type": "string" },
+        "thd": { "type": "string" },
+        "integrated_dc_switch": { "type": "boolean" },
+        "rcd_type": { "type": "string", "description": "e.g. Type A or Type B, as required by the inverter manual" },
+        "compliance": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "remarks": { "type": "string" }
+      }
+    }
+  }
+}

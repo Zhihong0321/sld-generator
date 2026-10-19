@@ -1,0 +1,49 @@
+{
+  "project": {
+    "title": "PROPOSED GRID-CONNECTED SOLAR PV INSTALLATION UNDER SOLAR ATAP SCHEME",
+    "account_holder": "",
+    "address": "",
+    "tnb_account_no": "",
+    "drawing_no": "",
+    "revision": "01",
+    "date": "",
+    "drawn_by": "",
+    "checked_by": "",
+    "approved_by": ""
+  },
+  "supply": { "phase": 3 },
+  "pv_module": "REPLACE-WITH-LIBRARY-KEY",
+  "inverter": "REPLACE-WITH-LIBRARY-KEY",
+  "array": {
+    "strings": [
+      { "mppt": 1, "modules": 10 },
+      { "mppt": 2, "modules": 10 }
+    ]
+  },
+  "cables": {
+    "dc_length_m": 20,
+    "ac_length_m": 15
+  },
+  "site": { "t_min_cell_c": 15, "t_max_cell_c": 70 },
+  "pcc": {
+    "tnb_cutout_fuse_a": 60,
+    "main_switch_a": 63,
+    "main_rcd_a": 63,
+    "main_rcd_ma": 100,
+    "existing_circuits": [
+      { "name": "LIGHTING", "rating_a": 10 },
+      { "name": "SOCKET OUTLETS", "rating_a": 20 },
+      { "name": "AIR-CONDITIONER", "rating_a": 20 }
+    ]
+  },
+  "overrides": {},
+  "people": {
+    "qp_name": "",
+    "qp_cert_no": "",
+    "rpvsp": "",
+    "cp_name": "",
+    "cp_category": "",
+    "cp_cert_no": "",
+    "contractor_reg_no": ""
+  }
+}

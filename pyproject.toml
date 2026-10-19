@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sldgen"
+version = "0.1.0"
+description = "Malaysian Solar ATAP residential PV Single Line Diagram generator (A3 PDF) with sizing and compliance checks"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+sldgen = "sldgen.__main__:main"
+
+[tool.setuptools]
+packages = ["sldgen"]

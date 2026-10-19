@@ -1,0 +1,42 @@
+{
+  "project": {
+    "title": "PROPOSED GRID-CONNECTED SOLAR PV INSTALLATION UNDER SOLAR ATAP SCHEME",
+    "account_holder": "AHMAD BIN ABDULLAH",
+    "address": "NO. 12, JALAN SETIA 3/5, TAMAN SETIA INDAH, 40170 SHAH ALAM, SELANGOR",
+    "tnb_account_no": "220012345678",
+    "drawing_no": "ATAP-SLD-RES-001",
+    "revision": "01",
+    "date": "2026-10-18",
+    "drawn_by": "NA",
+    "checked_by": "",
+    "approved_by": ""
+  },
+  "supply": { "phase": 3 },
+  "pv_module": "trina-tsm-440neg9r28",
+  "inverter": "huawei-sun2000-8ktl-m1",
+  "array": {
+    "strings": [
+      { "mppt": 1, "modules": 10 },
+      { "mppt": 2, "modules": 10 }
+    ]
+  },
+  "cables": { "dc_length_m": 25, "ac_length_m": 15 },
+  "pcc": {
+    "tnb_cutout_fuse_a": 60,
+    "existing_circuits": [
+      { "name": "LIGHTING", "rating_a": 10 },
+      { "name": "SOCKET OUTLETS", "rating_a": 20 },
+      { "name": "AIR-CONDITIONER", "rating_a": 20 },
+      { "name": "WATER HEATER", "rating_a": 20 }
+    ]
+  },
+  "people": {
+    "qp_name": "",
+    "qp_cert_no": "",
+    "rpvsp": "",
+    "cp_name": "",
+    "cp_category": "",
+    "cp_cert_no": "",
+    "contractor_reg_no": ""
+  }
+}
