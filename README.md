@@ -100,7 +100,7 @@ automatically when they open the folder:
 | **OpenAI Codex CLI, Cursor, GitHub Copilot agent, Gemini CLI, Aider, Windsurf** | Open the folder. They read `AGENTS.md`. Say *"Follow AGENTS.md: generate an SLD for …"*. |
 | **Any other agent that can run shell commands** | First message: *"Read AGENTS.md in this repo and follow it to generate an SLD for …"* |
 | **An agent that doesn't have the repo yet** | *"Install https://github.com/Zhihong0321/sld-generator, then follow its AGENTS.md to …"*. It runs the installer and `cd`s in. |
-| **Chat-only assistants (no shell)** | Not supported yet. They need the planned MCP server (see Roadmap). |
+| **Chat-only assistants (no shell)**: Claude Desktop and other MCP hosts | Connect the built-in MCP server. See [Use from chat assistants (MCP)](#use-from-chat-assistants-mcp). |
 
 Example request:
 
@@ -109,6 +109,24 @@ Example request:
 
 The agent asks one follow-up for anything missing, then hands back the PDF and lists
 any warnings and the submission fields that are still blank.
+
+## Use from chat assistants (MCP)
+
+Assistants that can't run shell commands can still use the pipeline through the built-in
+[MCP](https://modelcontextprotocol.io) server: `sldgen mcp` (also installed as
+`sldgen-mcp`). It has no extra dependencies. It speaks MCP over stdio and offers these tools:
+
+| Tool | Does |
+|---|---|
+| `list_library(kind?)` | Same as `sldgen library --json` |
+| `get_template()` / `get_schema()` | The blank project object and its JSON Schema |
+| `check_project(project)` | Same as `sldgen check --json`, with the project passed as a JSON object |
+| `build_project(project, force?)` | Same as `sldgen build --json`. Writes to `output/<drawing_no>/` and returns the PDF path |
+
+Install with the one-line installer, then add the server to your MCP host. For Claude
+Desktop, see [docs/TOOLS.md](docs/TOOLS.md#mcp). The server gives the assistant the same
+rules as `AGENTS.md`: never calculate ratings, never invent datasheet values, never
+fill in identity data.
 
 ---
 
@@ -128,6 +146,7 @@ sldgen/                        the engine
   project.py                     project loading + library lookup
   report.py                      markdown design report
   __main__.py                    command-line tools
+  mcp_server.py                  MCP server for chat assistants (`sldgen mcp`)
 library/                       equipment datasheet library (modules.json, inverters.json)
 templates/                     project.json, intake-checklist.md, module.json, inverter.json
 schema/project.schema.json     project file JSON Schema
@@ -159,6 +178,5 @@ docs/
 
 ## Roadmap
 
-- MCP server, so chat-based assistants can call `check` and `build` as tools
 - DXF export for AutoCAD touch-ups
 - Hybrid inverter and battery topologies

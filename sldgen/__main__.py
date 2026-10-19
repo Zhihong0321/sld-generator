@@ -74,34 +74,23 @@ def load_or_report(args):
     return None
 
 
-def cmd_check(args):
-    p = load_or_report(args)
-    if p is None:
-        return 2
+def run_check(p):
+    """Calculate and check a prepared project. Returns (exit code, JSON payload, design)."""
     d = design(p)
     errors = d["issues"].errors
-    warnings = [i for i in d["issues"] if i["level"] == "warning"]
-    result = "failed" if errors else "passed"
-    emit(args, {"result": result, "summary": summary(d), "issues": list(d["issues"])},
-         text_summary(d) + [f"RESULT: {'FAILED (%d error(s))' % len(errors) if errors else 'PASSED'}"
-                            f"{' with %d warning(s)' % len(warnings) if warnings and not errors else ''}"])
-    return 1 if errors else 0
+    payload = {"result": "failed" if errors else "passed", "summary": summary(d), "issues": list(d["issues"])}
+    return (1 if errors else 0), payload, d
 
 
-def cmd_build(args):
-    p = load_or_report(args)
-    if p is None:
-        return 2
+def run_build(p, name, out=None, force=False, png=True):
+    """Check, then write SVG / report / PDF / PNG. Returns (exit code, JSON payload, design)."""
     d = design(p)
     errors = d["issues"].errors
-    if errors and not args.force:
-        emit(args, {"result": "failed", "summary": summary(d), "issues": list(d["issues"]), "files": {}},
-             text_summary(d) + ["RESULT: FAILED - not building. Fix the errors, or pass --force for a "
-                                "watermarked draft."])
-        return 1
-    name = p["project"].get("drawing_no") or Path(args.project).stem
+    base = {"summary": summary(d), "issues": list(d["issues"])}
+    if errors and not force:
+        return 1, {"result": "failed", **base, "files": {}}, d
     rev = p["project"].get("revision", "")
-    out = Path(args.out) if args.out else ROOT / "output" / name
+    out = Path(out) if out else ROOT / "output" / name
     out.mkdir(parents=True, exist_ok=True)
     stem = f"{name}_Rev{rev}" if rev else name
     files = {"svg": out / f"{stem}.svg", "report": out / f"{stem}_design-report.md"}
@@ -111,18 +100,44 @@ def cmd_build(args):
     html = write_html(svg, out / f"{stem}.html")
     try:
         files["pdf"] = to_pdf(html, out / f"{stem}.pdf")
-        if not args.no_png:
+        if png:
             files["png"] = to_png(html, out / f"{stem}_preview.png")
     except Exception as e:  # browser missing or failed
-        emit(args, {"result": "error", "error": f"PDF export failed: {e}", "files": files},
-             [f"PDF export failed: {e}", "Run `sldgen doctor`."])
-        return 3
-    result = "failed_forced" if errors else "passed"
-    emit(args, {"result": result, "summary": summary(d), "issues": list(d["issues"]),
-                "files": {k: str(v) for k, v in files.items()}},
-         text_summary(d) + [f"RESULT: {'FORCED DRAFT (design check failed)' if errors else 'PASSED'}",
-                            *[f"{k.upper():7} {v}" for k, v in files.items()]])
-    return 1 if errors else 0
+        return 3, {"result": "error", "error": f"PDF export failed: {e}",
+                   "files": {k: str(v) for k, v in files.items()}}, d
+    return (1 if errors else 0), {"result": "failed_forced" if errors else "passed", **base,
+                                  "files": {k: str(v) for k, v in files.items()}}, d
+
+
+def cmd_check(args):
+    p = load_or_report(args)
+    if p is None:
+        return 2
+    code, payload, d = run_check(p)
+    errors = d["issues"].errors
+    warnings = [i for i in d["issues"] if i["level"] == "warning"]
+    emit(args, payload,
+         text_summary(d) + [f"RESULT: {'FAILED (%d error(s))' % len(errors) if errors else 'PASSED'}"
+                            f"{' with %d warning(s)' % len(warnings) if warnings and not errors else ''}"])
+    return code
+
+
+def cmd_build(args):
+    p = load_or_report(args)
+    if p is None:
+        return 2
+    name = p["project"].get("drawing_no") or Path(args.project).stem
+    code, payload, d = run_build(p, name, args.out, args.force, not args.no_png)
+    if payload["result"] == "failed":
+        text = text_summary(d) + ["RESULT: FAILED - not building. Fix the errors, or pass --force for a "
+                                  "watermarked draft."]
+    elif payload["result"] == "error":
+        text = [payload["error"], "Run `sldgen doctor`."]
+    else:
+        text = text_summary(d) + [f"RESULT: {'FORCED DRAFT (design check failed)' if code else 'PASSED'}",
+                                  *[f"{k.upper():7} {v}" for k, v in payload["files"].items()]]
+    emit(args, payload, text)
+    return code
 
 
 def cmd_init(args):
@@ -207,6 +222,11 @@ def cmd_doctor(args):
     return 0 if ok else 3
 
 
+def cmd_mcp(args):
+    from .mcp_server import serve
+    return serve()
+
+
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(prog="sldgen", description="Malaysian Solar ATAP residential SLD generator")
@@ -247,6 +267,9 @@ def main(argv=None):
 
     sp = common(sub.add_parser("doctor", help="check Python, browser, library and examples"))
     sp.set_defaults(func=cmd_doctor)
+
+    sp = sub.add_parser("mcp", help="run the MCP server on stdio (for Claude Desktop and other chat hosts)")
+    sp.set_defaults(func=cmd_mcp, json=False)
 
     args = ap.parse_args(argv)
     return args.func(args)

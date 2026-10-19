@@ -14,6 +14,7 @@ mode AI agents should use.
 | [`sldgen check`](#check) | Run calculations and compliance checks (no files written) |
 | [`sldgen build`](#build) | Check, then write the PDF, PNG, SVG and design report |
 | [`sldgen schema`](#schema) | Print the project file JSON Schema |
+| [`sldgen mcp`](#mcp) | Run the MCP server for chat assistants (Claude Desktop etc.) |
 
 ## Exit codes
 
@@ -127,3 +128,69 @@ sldgen schema
 ```
 Prints `schema/project.schema.json`. Point editors or validators at that file to get
 autocomplete and validation for project files.
+
+## mcp
+```bash
+sldgen mcp          # or: sldgen-mcp, or: python -m sldgen mcp
+```
+Runs an [MCP](https://modelcontextprotocol.io) server on stdio (JSON-RPC 2.0, one message
+per line; logs go to stderr). Chat assistants that can't run a shell use it to call the
+pipeline as tools. It has no dependencies beyond the standard library.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `list_library` | `kind?`: `pv_module` or `inverter` | Same JSON as `sldgen library --json` |
+| `get_template` | none | `templates/project.json` |
+| `get_schema` | none | `schema/project.schema.json` |
+| `check_project` | `project`: the project as a JSON object | Same JSON as `sldgen check --json` |
+| `build_project` | `project`, `force?` | Same JSON as `sldgen build --json`; files go to `output/<drawing_no>/` in the install folder |
+
+The project is passed inline because chat assistants can't write files. Each result is
+returned as JSON text and as `structuredContent`. On connect, the server sends the
+assistant short instructions with the `AGENTS.md` golden rules.
+
+### Claude Desktop
+
+Install first with the one-line installer (`install.ps1` / `install.sh`, see the README).
+It puts the repo in `~/sld-generator` and runs `pip install -e`. Then open Claude
+Desktop → **Settings → Developer → Edit Config** and add the server to
+`claude_desktop_config.json`. Use the absolute path of your install folder, because
+`~` is not expanded:
+
+Windows (`%APPDATA%\Claude\claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "sldgen": {
+      "command": "python",
+      "args": ["-m", "sldgen", "mcp"],
+      "env": { "PYTHONPATH": "C:\Users\<you>\sld-generator" }
+    }
+  }
+}
+```
+
+macOS (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "sldgen": {
+      "command": "python3",
+      "args": ["-m", "sldgen", "mcp"],
+      "env": { "PYTHONPATH": "/Users/<you>/sld-generator" }
+    }
+  }
+}
+```
+
+`PYTHONPATH` makes the server load from the install folder even when Claude Desktop finds
+a different Python on `PATH`. If `python` isn't found, put the full path to the Python
+executable in `command`, or on Windows use `"command": "py", "args": ["-3", "-m",
+"sldgen", "mcp"]`. Restart Claude Desktop. The `sldgen` tools then appear under the tools
+icon. Drawings are written to `output/` inside the install folder. Other MCP hosts take
+the same command, arguments and environment.
+
+To try the server by hand, pipe one JSON-RPC message per line into it:
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | python -m sldgen mcp
+```

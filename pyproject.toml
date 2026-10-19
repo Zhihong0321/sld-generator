@@ -12,6 +12,7 @@ dependencies = []
 
 [project.scripts]
 sldgen = "sldgen.__main__:main"
+sldgen-mcp = "sldgen.mcp_server:main"
 
 [tool.setuptools]
 packages = ["sldgen"]
