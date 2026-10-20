@@ -30,10 +30,14 @@ installs the `sldgen` command, and runs a health check. Run it again to update; 
 `projects/` and `library/` are kept. You need Python 3.10+ and Edge or Chrome. Git is
 optional.
 
-**Using an AI agent?** Give it this link and one sentence:
+**Using an AI agent?** Give it this link:
 
-> Install https://github.com/Zhihong0321/sld-generator, then follow its AGENTS.md to
-> generate an SLD for: 3-phase, 17 × Jinko 650 W, SAJ R6-10K.
+> Install https://github.com/Zhihong0321/sld-generator and follow its AGENTS.md.
+
+The agent then asks you the job questions (phase, panel model and quantity, inverter
+model, plus optional cable lengths and title-block details) and generates the PDF. If
+you already know the details, add them to the same message, e.g. *"…to generate an SLD
+for: 3-phase, 17 × Jinko 650 W, SAJ R6-10K"*, and it skips the questions it doesn't need.
 
 ---
 
@@ -96,8 +100,9 @@ automatically when they open the folder:
 
 | Agent | How to start |
 |---|---|
-| **Claude Code** (CLI, desktop, IDE) | Open the folder and say *"generate an SLD for …"*. The `sld-generator` skill loads itself. |
-| **OpenAI Codex CLI, Cursor, GitHub Copilot agent, Gemini CLI, Aider, Windsurf** | Open the folder. They read `AGENTS.md`. Say *"Follow AGENTS.md: generate an SLD for …"*. |
+| **Claude Code** (CLI, desktop, IDE) | Open the folder and say *"new SLD"*. The `sld-generator` skill loads itself and asks the job questions. |
+| **OpenAI Codex CLI, Cursor, GitHub Copilot, Gemini CLI, Windsurf** | Open the folder and say *"new SLD"*. They read `AGENTS.md` (Gemini via `GEMINI.md`, Copilot via `.github/copilot-instructions.md`). |
+| **Aider** | Start with `aider --read AGENTS.md`, then say *"new SLD"*. |
 | **Any other agent that can run shell commands** | First message: *"Read AGENTS.md in this repo and follow it to generate an SLD for …"* |
 | **An agent that doesn't have the repo yet** | *"Install https://github.com/Zhihong0321/sld-generator, then follow its AGENTS.md to …"*. It runs the installer and `cd`s in. |
 | **Chat-only assistants (no shell)** | Not supported yet. They need the planned MCP server (see Roadmap). |
@@ -107,8 +112,10 @@ Example request:
 > 3-phase, 17 × Jinko Tiger Neo 3.0 650 W, SAJ R6-10K. Customer Ahmad bin Abdullah,
 > TNB 220012345678, 12 Jalan Setia 3/5 Shah Alam. DC run 25 m, AC run 12 m.
 
-The agent asks one follow-up for anything missing, then hands back the PDF and lists
-any warnings and the submission fields that are still blank.
+If you just say *"new SLD"*, the agent replies with the intake questions (see
+[AGENTS.md → Start here](AGENTS.md#start-here-your-first-reply)). Either way it asks
+at most one follow-up, then hands back the PDF and lists any warnings and the
+submission fields that are still blank.
 
 ---
 
@@ -116,7 +123,8 @@ any warnings and the submission fields that are still blank.
 
 ```
 AGENTS.md                      agent playbook (source of truth for AI workflows)
-CLAUDE.md                      points Claude Code at AGENTS.md
+CLAUDE.md / GEMINI.md          point Claude Code / Gemini CLI at AGENTS.md
+.github/copilot-instructions.md  points GitHub Copilot at AGENTS.md
 README.md                      this file
 install.ps1 / install.sh       one-line installers (Windows / macOS-Linux)
 pyproject.toml                 makes `sldgen` an installable command

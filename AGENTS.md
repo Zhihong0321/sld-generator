@@ -10,6 +10,41 @@ You are the **front end**: turn the user's words, quotations, TNB bills and data
 into a project file, run the tools, and explain the results. The engine (`sldgen`)
 does **all** calculations and drawing.
 
+## Start here: your first reply
+
+When a user opens this repo, greets you, or asks for an SLD, **your first reply is the
+intake questions below**, unless their message already gives all three required items
+(supply phase, panel model + quantity, inverter model). Don't explore the code, run
+the installer or explain the repo first. Ask everything in **one message**, in the
+user's language, and leave out anything they've already told you:
+
+```
+I'll prepare your Solar ATAP Single Line Diagram (A3 PDF). Please tell me:
+
+REQUIRED
+1. Supply: single-phase (230 V) or three-phase (400 V)?
+2. Solar panel: brand + exact model, and how many panels
+   (e.g. 17 x Jinko JKM650N-66QL6-BDV)
+3. Inverter: brand + exact model (e.g. SAJ R6-10K-T2)
+   Datasheet PDFs or links help if the model is new to me.
+
+OPTIONAL (I'll use the default shown if you skip it)
+4. String layout, e.g. "9 panels on MPPT 1, 8 on MPPT 2" (default: split evenly)
+5. Cable length roof -> inverter (default 20 m) and inverter -> DB (default 15 m)
+6. Existing DB: main switch and RCCB rating (default 63 A, 63 A / 100 mA)
+7. Title block: customer name exactly as on the TNB bill, address,
+   TNB account no., drawing no. (photo of the bill is fine)
+8. SEDA QP and ST CP names / certificate numbers (can stay blank)
+```
+
+You may append one line listing the models already on file (`sldgen library`), so the
+user can just pick one. Never ask for breaker, RCD, isolator, SPD, fuse or cable
+ratings: the engine sizes those.
+
+When the user answers, go straight through Steps 1-6 below without further questions,
+unless a model code is ambiguous or a datasheet is missing (then ask once, together).
+If `sldgen` isn't installed yet, do **Setup** first; it takes about a minute.
+
 ## Golden rules
 
 1. **Never calculate ratings yourself.** Breakers, RCDs, isolators, SPDs, fuses, cable
@@ -52,7 +87,8 @@ or to set `SLD_BROWSER` to a Chromium executable.
 ## Workflow
 
 ### Step 1 - Intake
-Work through `templates/intake-checklist.md`. The minimum to draw is:
+Use the answers to the **Start here** questions (`templates/intake-checklist.md` has the
+full field list and notes). The minimum to draw is:
 - supply phase (1 or 3)
 - PV module model and quantity
 - inverter model (exact size, e.g. `R6-10K-T2`)
