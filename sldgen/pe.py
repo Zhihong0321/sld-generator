@@ -171,7 +171,22 @@ def build_layout(pe):
         except Exception as e:
             problems.append(f"outline {i} could not be read ({e}): skipped.")
 
-    for i, a in enumerate(lay.get("arrays") or [], 1):
+    entries = [("array", i, a) for i, a in enumerate(lay.get("arrays") or [], 1)]
+    # single modules, e.g. traced from a PV drawing: {"rect": [x, y, w, h]} (orientation from
+    # the shape, drawn at standard size around the same centre) or {"at": [x, y], "orientation"}
+    for i, m in enumerate(lay.get("modules") or [], 1):
+        if isinstance(m, dict) and m.get("rect") is not None:
+            try:
+                x, y, w, h = (num(v) for v in m["rect"])
+                orient = "portrait" if h >= w else "landscape"
+                mw, mh = (1.0, aspect) if orient == "portrait" else (aspect, 1.0)
+                m = {"at": [x + w / 2 - mw / 2, y + h / 2 - mh / 2], "orientation": orient, "hook_side": m.get("hook_side")}
+            except Exception as e:
+                problems.append(f"module {i} could not be read ({e}): skipped.")
+                continue
+        entries.append(("module", i, m))
+
+    for kind, i, a in entries:
         try:
             if not isinstance(a, dict):
                 raise ValueError("not an object")
@@ -180,54 +195,59 @@ def build_layout(pe):
             rows, cols = max(0, int(num(a.get("rows"), 1))), max(0, int(num(a.get("cols"), 1)))
             orient = str(a.get("orientation") or "portrait").lower()
             if orient not in ("portrait", "landscape"):
-                problems.append(f"array {i}: orientation '{orient}' unknown, drawn portrait.")
+                problems.append(f"{kind} {i}: orientation '{orient}' unknown, drawn portrait.")
                 orient = "portrait"
             gap = num(a.get("gap"), 0.03)
             skip = {(int(num(s[0])), int(num(s[1]))) for s in (a.get("skip") or []) if isinstance(s, (list, tuple)) and len(s) >= 2}
             hook_end = str(a.get("hook_side") or "start").lower() == "end"
             mw, mh = (1.0, aspect) if orient == "portrait" else (aspect, 1.0)
-            cells = {}
             for r in range(1, rows + 1):
                 for c in range(1, cols + 1):
-                    if (r, c) in skip:
-                        continue
-                    x, y = x0 + (c - 1) * (mw + gap), y0 + (r - 1) * (mh + gap)
-                    cells[(r, c)] = (x, y)
-                    modules.append({"x": x, "y": y, "w": mw, "h": mh, "orient": orient, "hook_end": hook_end})
-            # rails cross the long side at 25 % and 75 %, one run per unbroken line of modules
-            over = 0.2
-            if orient == "portrait":
-                for r in range(1, rows + 1):
-                    for run in runs([c for c in range(1, cols + 1) if (r, c) in cells]):
-                        xa = cells[(r, run[0])][0] - over
-                        xb = cells[(r, run[-1])][0] + mw + over
-                        y = cells[(r, run[0])][1]
-                        for fr in (0.25, 0.75):
-                            rails.append(((xa, y + fr * mh), (xb, y + fr * mh)))
-            else:
-                for c in range(1, cols + 1):
-                    for run in runs([r for r in range(1, rows + 1) if (r, c) in cells]):
-                        ya = cells[(run[0], c)][1] - over
-                        yb = cells[(run[-1], c)][1] + mh + over
-                        x = cells[(run[0], c)][0]
-                        for fr in (0.25, 0.75):
-                            rails.append(((x + fr * mw, ya), (x + fr * mw, yb)))
+                    if (r, c) not in skip:
+                        modules.append({"x": x0 + (c - 1) * (mw + gap), "y": y0 + (r - 1) * (mh + gap),
+                                        "w": mw, "h": mh, "orient": orient, "hook_end": hook_end})
         except Exception as e:
-            problems.append(f"array {i} could not be read ({e}): skipped.")
+            problems.append(f"{kind} {i} could not be read ({e}): skipped.")
 
+    rails = make_rails(modules)
     if not modules:
-        problems.append("Layout has no modules: give layout.arrays.")
+        problems.append("Layout has no modules: give layout.arrays or layout.modules.")
     return outlines, modules, rails
 
 
-def runs(idx):
-    out = []
-    for i in idx:
-        if out and i == out[-1][-1] + 1:
-            out[-1].append(i)
-        else:
-            out.append([i])
-    return out
+def make_rails(modules, over=0.2, gap_max=0.2):
+    """Rails cross each module's long side at 25 % and 75 %. Modules of the same orientation
+    that sit in one line with small gaps share continuous rails; a wider gap breaks the run."""
+    rails = []
+    for orient in ("portrait", "landscape"):
+        port = orient == "portrait"
+        ms = [m for m in modules if m["orient"] == orient]
+        # a "line" = same row (portrait) or same column (landscape)
+        key = (lambda m: m["y"]) if port else (lambda m: m["x"])
+        along = (lambda m: m["x"]) if port else (lambda m: m["y"])
+        size = (lambda m: m["w"]) if port else (lambda m: m["h"])
+        lines = []
+        for m in sorted(ms, key=key):
+            if lines and abs(key(m) - key(lines[-1][0])) < 0.3:
+                lines[-1].append(m)
+            else:
+                lines.append([m])
+        for line in lines:
+            line.sort(key=along)
+            run = [line[0]]
+            for m in line[1:] + [None]:
+                if m is not None and along(m) - (along(run[-1]) + size(run[-1])) <= gap_max:
+                    run.append(m)
+                    continue
+                a = along(run[0]) - over
+                b = along(run[-1]) + size(run[-1]) + over
+                base = sum(key(x) for x in run) / len(run)
+                span = run[0]["h"] if port else run[0]["w"]
+                for fr in (0.25, 0.75):
+                    c = base + fr * span
+                    rails.append(((a, c), (b, c)) if port else ((c, a), (c, b)))
+                run = [m] if m is not None else []
+    return rails
 
 
 def draw_layout(s, pe, box):

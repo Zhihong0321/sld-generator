@@ -239,6 +239,9 @@ async function loadSettings() {
   $('#sEapiKey').placeholder = s.hasEapiKey ? `in use: ${s.eapiKey}` : 'not set: needed for the Invoices page';
   $('#sKey').value = ''; $('#sKey').placeholder = s.hasKey ? `in use: ${s.apiKey}` : 'none';
   $('#sKeySource').textContent = `Key source: ${s.keySource}`;
+  $('#sPeBase').value = s.peBase || ''; $('#sPeModel').value = s.peModel || ''; $('#sPeEffort').value = s.peEffort || 'medium';
+  $('#sPeKey').value = ''; $('#sPeKey').placeholder = s.hasPeKey ? `in use: ${s.peKey}` : 'not set: needed for PE drawings';
+  $('#sPeKeySource').textContent = `Key source: ${s.peKeySource}`;
 }
 $('#saveSettings').addEventListener('click', async () => {
   const patch = { baseUrl: $('#sBase').value, model: $('#sModel').value, python: $('#sPython').value };
@@ -246,6 +249,8 @@ $('#saveSettings').addEventListener('click', async () => {
   patch.eapiBase = $('#sEapiBase').value;
   patch.uploaderName = $('#sUploader').value;
   if ($('#sEapiKey').value.trim()) patch.eapiKey = $('#sEapiKey').value;
+  patch.peBase = $('#sPeBase').value; patch.peModel = $('#sPeModel').value; patch.peEffort = $('#sPeEffort').value;
+  if ($('#sPeKey').value.trim()) patch.peKey = $('#sPeKey').value;
   const r = await window.sld.saveSettings(patch);
   $('#sStatus').textContent = r.ok ? 'Saved.' : 'Save failed: ' + r.error;
   loadSettings(); loadLibrary();
@@ -404,6 +409,7 @@ async function openInvoice(row) {
     <div class="card"><h2>Invoice</h2><div class="kv" style="margin-top:10px">${kv.map(([k, v]) => `<div>${esc(k)}</div><div>${esc(v || '—')}</div>`).join('')}</div></div>
     <div class="card"><h2>SLD inputs from this invoice</h2>
       <ul class="ready">${ready.map(([k, v]) => `<li class="${v ? 'y' : 'n'}"><b>${esc(k)}:</b> ${esc(v || 'not available')}</li>`).join('')}</ul></div>
+    ${peCardHtml(d)}
     ${attachmentsHtml(d)}
     ${allNotes.length ? `<div class="card"><h2>Notes</h2><div style="margin-top:10px">${allNotes.map((n) => `<div class="issue warning">${esc(n)}</div>`).join('')}</div></div>` : ''}
     ${d.package ? `<details class="card"><summary><h2>Package record</h2></summary><pre class="report">${esc(JSON.stringify(d.package, null, 2))}</pre></details>` : ''}`;
@@ -413,6 +419,7 @@ async function openInvoice(row) {
     if (!r.ok) alert(r.error);
   }));
   showLocalDrawings(inv.invoice_number);
+  wirePeCard(d);
   $('#invGen').addEventListener('click', () => invoiceToSld(d, sld.complete));
   $('#invOpen').addEventListener('click', () => invoiceToSld(d, false));
 }
@@ -505,4 +512,124 @@ async function showLocalDrawings(invoiceNumber) {
   box.innerHTML = `<p style="margin:0 0 4px"><b>Latest drawing on this PC:</b> ${esc(h.stem)} ${statusBadge(h.result, h.issues)}${mine.length > 1 ? ` <span class="muted">(${mine.length} revisions)</span>` : ''}</p>
     ${h.files.pdf ? uploadBarHtml(invoiceNumber, h.files.pdf, h.result).replace('class="card upbar"', 'class="upbar"') : '<p class="muted">This drawing has no PDF.</p>'}`;
   wireUploadButtons(box);
+}
+
+
+// ---------- PE drawing (module layout plan) ----------
+// Pick a PV drawing on the invoice, trace it with the PE drawing AI, then rebuild the
+// sheet with another roof type or rotation without calling the AI again.
+const PE_IMG = /\.(png|jpe?g|webp)(\?|$)/i;
+const PE_ROT = [['90', 'Turn 90° clockwise'], ['270', 'Turn 90° anticlockwise'], ['0', 'As drawn'], ['180', 'Upside down']];
+
+function pePvDrawings(d) {
+  const files = (d.attachments || []).filter((f) => (f.doc_type === 'pv_system' || f.doc_type === 'pv_system_drawing') && PE_IMG.test(f.url));
+  return files.sort((a, b) => String(b.uploaded_at || '').localeCompare(String(a.uploaded_at || '')));
+}
+
+function peCardHtml(d) {
+  const pv = pePvDrawings(d);
+  const pick = pv.map((f, i) => `
+    <label class="pe-pick"><input type="radio" name="pePv" value="${i}"${i === 0 ? ' checked' : ''}>
+      <span class="pe-thumb" data-pe-thumb="${esc(f.url)}"><span class="muted">loading…</span></span>
+      <span class="muted">${esc(f.uploaded_at ? day(f.uploaded_at) : (f.source || '').replace('invoice.', ''))}${f.uploaded_by ? ' · ' + esc(f.uploaded_by) : ''}</span></label>`).join('');
+  return `<div class="card" id="peCard"><h2>PE drawing (module layout plan)</h2>
+    ${pv.length ? `<p class="muted" style="margin:8px 0">PV drawing to trace${pv.length > 1 ? ` (${pv.length} on this invoice, newest first: pick the final one)` : ''}:</p>
+      <div class="pe-picks">${pick}</div>`
+      : '<div class="issue warning" style="margin-top:10px">This invoice has no PV system drawing image to trace.</div>'}
+    <div class="grid3" style="margin-top:10px">
+      <label class="field"><span class="lbl">Roof type</span><select id="peRoof">
+        <option value="">Let the AI decide</option><option value="tile">Roof tile</option><option value="metal_deck">Metal deck</option></select></label>
+      <label class="field"><span class="lbl">Turn the layout</span><select id="peRot">${PE_ROT.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+      <div class="field"><span class="lbl">&nbsp;</span><div class="row" style="margin:0">
+        <button class="primary" id="peTrace"${pv.length ? '' : ' disabled'}>Trace with AI &amp; build</button>
+        <button class="ghost" id="peRebuild" hidden>Rebuild</button></div></div>
+    </div>
+    <div id="peOut" style="margin-top:10px"></div>
+  </div>`;
+}
+
+function peArgs(d) {
+  const f = d.sld?.form || {};
+  return { invoiceNumber: d.invoice.invoice_number, clientName: d.customer?.name || f.account_holder || '',
+    address: d.invoice.address || f.address || '', module: f.module || '', expected: f.qty ? Number(f.qty) : null,
+    roofType: $('#peRoof')?.value || '', rotate: Number($('#peRot')?.value ?? 90) };
+}
+
+function peShow(r, d) {
+  const out = $('#peOut');
+  if (!out) return;
+  if (!r || !r.ok) { out.innerHTML = `<div class="issue error">${esc(r?.error || 'PE drawing failed')}</div>`; return; }
+  const exp = d.sld?.form?.qty ? Number(d.sld.form.qty) : null;
+  const match = exp == null ? '' : (Number(r.modules) === exp ? `<span class="badge b-ok">MATCHES PACKAGE (${exp})</span>`
+    : `<span class="badge b-warn">PACKAGE SAYS ${exp}</span>`);
+  const notes = [...(r.notes || [])];
+  const problems = r.problems || [];
+  out.innerHTML = `
+    <div class="reshead" style="margin:6px 0 8px"><b>${esc(r.modules)} modules · ${esc(r.kwp)} kWp · ${r.roof_type === 'metal_deck' ? 'Metal deck' : 'Roof tile'}</b> ${match}
+      ${problems.length ? `<span class="badge b-warn">${problems.length} TO CHECK</span>` : '<span class="badge b-ok">BUILT</span>'}</div>
+    ${r.ai ? `<p class="muted" style="margin:0 0 8px">Traced by ${esc(r.ai.model)} in ${esc(r.ai.seconds)} s${r.ai.stated_module_count ? ` · PV drawing label says ${esc(r.ai.stated_module_count)}` : ''}${r.ai.roof_type ? ` · AI roof guess: ${esc(r.ai.roof_type)}` : ''}</p>` : ''}
+    ${[...problems.map((p) => `<div class="issue warning">${esc(p)}</div>`), ...notes.map((n) => `<div class="issue info">${esc(n)}</div>`)].join('')}
+    ${r.export_error ? `<div class="issue error">${esc(r.export_error)}</div>` : ''}
+    <div class="btns" style="margin-top:8px">
+      ${r.files?.pdf ? `<button class="secondary" data-pe-open="${esc(r.files.pdf)}">Open PDF</button>` : ''}
+      ${r.files?.pdf || r.files?.svg ? `<button class="ghost" data-pe-folder="${esc(r.files.pdf || r.files.svg)}">Show in folder</button>` : ''}
+    </div>
+    <div class="pe-compare">
+      <div><div class="lbl">PV drawing</div><div class="sheet" id="pePvBig"></div></div>
+      <div><div class="lbl">PE drawing</div>${r.files?.png ? `<div class="sheet"><img alt="PE preview" src="${fileUrl(r.files.png)}"></div>` : '<p class="muted">No preview image.</p>'}</div>
+    </div>`;
+  $$('[data-pe-open]', out).forEach((b) => b.addEventListener('click', () => window.sld.openPath(b.dataset.peOpen)));
+  $$('[data-pe-folder]', out).forEach((b) => b.addEventListener('click', () => window.sld.showInFolder(b.dataset.peFolder)));
+  const url = r.sourceUrl || pePvDrawings(d)[Number($('#peCard input[name=pePv]:checked')?.value || 0)]?.url;
+  if (url) window.sld.peImage(url).then((x) => { const box = $('#pePvBig'); if (box && x.ok) box.innerHTML = `<img alt="PV drawing" src="${x.dataUri}">`; });
+  $('#peRebuild').hidden = false;
+}
+
+async function wirePeCard(d) {
+  const card = $('#peCard');
+  if (!card) return;
+  const inv = d.invoice.invoice_number;
+  $$('[data-pe-thumb]', card).forEach(async (el) => {
+    const r = await window.sld.peImage(el.dataset.peThumb).catch((e) => ({ ok: false, error: e.message }));
+    if (INV.sel !== inv) return;
+    el.innerHTML = r.ok ? `<img alt="PV drawing" src="${r.dataUri}">` : `<span class="issue error">${esc(r.error)}</span>`;
+  });
+  // an earlier PE for this invoice on this PC
+  try {
+    const loc = await window.sld.peLocal(inv);
+    if (INV.sel !== inv) return;
+    if (loc.ok && loc.exists) {
+      if (loc.roof_type) $('#peRoof').value = loc.roof_type;
+      $('#peRot').value = String(loc.rotate ?? 90);
+      const i = pePvDrawings(d).findIndex((f) => f.url === loc.source?.url);
+      if (i >= 0) { const r = $(`#peCard input[name=pePv][value="${i}"]`); if (r) r.checked = true; }
+      if (loc.files?.png || loc.files?.pdf) {
+        peShow({ ok: true, modules: loc.modules, kwp: '', roof_type: loc.roof_type, files: loc.files, problems: [],
+          notes: [`Built earlier on this PC${loc.source?.traced ? ' (traced ' + day(loc.source.traced) + ')' : ''}. Trace again or change the roof type / turn, then Rebuild.`],
+          sourceUrl: loc.source?.url }, d);
+        $('#peOut .reshead').innerHTML = `<b>Earlier PE drawing: ${esc(loc.modules)} modules</b>`;
+      }
+    }
+  } catch { /* nothing earlier */ }
+
+  $('#peTrace').addEventListener('click', async () => {
+    const f = pePvDrawings(d)[Number($('#peCard input[name=pePv]:checked')?.value || 0)];
+    if (!f) return;
+    $('#peTrace').disabled = true; $('#peRebuild').disabled = true;
+    $('#peOut').innerHTML = '<p class="muted">Tracing the PV drawing with AI and building the PE sheet… (about 10-40 s)</p>';
+    let r;
+    try { r = await window.sld.peTrace({ ...peArgs(d), url: f.url }); } catch (e) { r = { ok: false, error: e.message }; }
+    $('#peTrace').disabled = false; $('#peRebuild').disabled = false;
+    if (INV.sel !== inv) return;
+    if (r.ok && !$('#peRoof').value && r.roof_type) $('#peRoof').value = r.roof_type;
+    peShow({ ...r, sourceUrl: f.url }, d);
+  });
+  $('#peRebuild').addEventListener('click', async () => {
+    $('#peRebuild').disabled = true;
+    let r;
+    try { r = await window.sld.peBuild(peArgs(d)); } catch (e) { r = { ok: false, error: e.message }; }
+    $('#peRebuild').disabled = false;
+    if (INV.sel !== inv) return;
+    peShow(r, d);
+  });
 }

@@ -9,6 +9,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const { Updater, REPO_URL } = require('./updater');
 const { InvoiceApi } = require('./invoices');
+const pe = require('./pe');
 
 const ROOT = path.resolve(__dirname, '..');            // repo root (holds sldgen/, library/, projects/, output/)
 const PROJECTS = path.join(ROOT, 'projects');
@@ -17,6 +18,7 @@ const TEMPLATE = path.join(ROOT, 'templates', 'project.json');
 const VAULT = 'D:\\Tools\\my-vault\\vault.json';
 const VAULT_ENTRY = 'VECTIDE_DEEPSEEK_KEY';
 const DEFAULT_MODELS = ['deepseek-v4.1-flash', 'deepseek-v4-flash-0731'];
+const PE_VAULT_ENTRY = 'LINGSUAN_API_KEY';   // optional fallback for the PE drawing AI key
 
 // ---------- settings ----------
 function settingsPath() { return path.join(app.getPath('userData'), 'settings.json'); }
@@ -25,12 +27,12 @@ function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
 }
 
-function vaultLlm() {
+function vaultLlm(name = VAULT_ENTRY) {
   const v = readJson(VAULT, null);
   const find = (x) => {
     if (Array.isArray(x)) { for (const y of x) { const r = find(y); if (r) return r; } }
     else if (x && typeof x === 'object') {
-      if (x.name === VAULT_ENTRY) return x;
+      if (x.name === name) return x;
       for (const y of Object.values(x)) { const r = find(y); if (r) return r; }
     }
     return null;
@@ -42,6 +44,7 @@ function vaultLlm() {
 function getSettings() {
   const saved = readJson(settingsPath(), {});
   const vault = vaultLlm();
+  const peVault = vaultLlm(PE_VAULT_ENTRY);
   return {
     python: saved.python || 'python',
     baseUrl: saved.baseUrl || vault.baseUrl || 'https://vectide.cn/v1',
@@ -51,6 +54,11 @@ function getSettings() {
     eapiBase: saved.eapiBase || 'https://e-api.up.railway.app',
     eapiKey: saved.eapiKey || '',
     uploaderName: saved.uploaderName || require('os').userInfo().username || 'SLD Studio',
+    peBase: saved.peBase || 'https://api.lingsuan.si/v1',
+    peModel: saved.peModel || 'gpt-6.1-terra',
+    peEffort: saved.peEffort || 'medium',
+    peKey: saved.peKey || peVault.apiKey,
+    peKeySource: saved.peKey ? 'settings' : (peVault.apiKey ? `vault (${PE_VAULT_ENTRY})` : 'none'),
   };
 }
 
@@ -247,11 +255,12 @@ ipcMain.handle('read-text', async (_e, p) => {
 ipcMain.handle('settings:get', async () => {
   const s = getSettings();
   const mask = (k) => (k ? `${k.slice(0, 3)}…${k.slice(-2)}` : '');
-  return { ...s, apiKey: mask(s.apiKey), hasKey: !!s.apiKey, eapiKey: mask(s.eapiKey), hasEapiKey: !!s.eapiKey };
+  return { ...s, apiKey: mask(s.apiKey), hasKey: !!s.apiKey, eapiKey: mask(s.eapiKey), hasEapiKey: !!s.eapiKey,
+    peKey: mask(s.peKey), hasPeKey: !!s.peKey };
 });
 ipcMain.handle('settings:save', async (_e, patch) => {
   const saved = readJson(settingsPath(), {});
-  for (const k of ['python', 'baseUrl', 'model', 'apiKey', 'eapiBase', 'eapiKey', 'uploaderName']) {
+  for (const k of ['python', 'baseUrl', 'model', 'apiKey', 'eapiBase', 'eapiKey', 'uploaderName', 'peBase', 'peModel', 'peEffort', 'peKey']) {
     if (patch && typeof patch[k] === 'string') {
       if (patch[k].trim() === '') delete saved[k]; else saved[k] = patch[k].trim();
     }
@@ -473,6 +482,86 @@ ipcMain.handle('open-file-url', (_e, url) => {
   const u = String(url || '');
   if (!FILE_HOSTS.test(u)) return { ok: false, error: `Not an attachment link: ${u}` };
   shell.openExternal(u); return { ok: true };
+});
+
+// ---------- PE drawing (module layout plan) ----------
+const peImages = new Map();   // url -> data URI, so a rebuild or a second trace does not download again
+
+async function peImage(url) {
+  const u = String(url || '');
+  if (!FILE_HOSTS.test(u)) return { ok: false, error: `Not an attachment link: ${u}` };
+  if (peImages.has(u)) return { ok: true, dataUri: peImages.get(u) };
+  const r = await pe.fetchImage(u);
+  if (r.ok) { peImages.set(u, r.dataUri); if (peImages.size > 40) peImages.delete(peImages.keys().next().value); }
+  return r;
+}
+
+const peName = (inv) => `PE-${String(inv || 'NO-INVOICE').replace(/[\\/:*?"<>|\s]+/g, '-')}`;
+const peFile = (inv) => path.join(PROJECTS, `${peName(inv)}.json`);
+
+async function peBuild(file) {
+  const r = await runSldgen(['pe', file, '--json']);
+  const d = r.data || {};
+  if (!r.data) return { ok: false, error: r.stderr || r.stdout || `sldgen pe exited with code ${r.code}`, projectFile: file };
+  return { ok: true, result: d.result, modules: d.modules, kwp: d.kwp, roof_type: d.roof_type, problems: d.problems || [],
+    files: d.files || {}, export_error: d.export_error || null, projectFile: file };
+}
+
+ipcMain.handle('pe:image', (_e, url) => peImage(url));
+
+ipcMain.handle('pe:local', async (_e, inv) => {
+  const file = peFile(inv);
+  const p = readJson(file, null);
+  if (!p) return { ok: true, exists: false };
+  const dn = p.project?.drawing_no || peName(inv), rev = String(p.project?.revision || '');
+  const base = path.join(OUTPUT, dn, `${dn}_PE${rev ? '_Rev' + rev : ''}`);
+  const has = (x) => (fs.existsSync(x) ? x : null);
+  return { ok: true, exists: true, projectFile: file, roof_type: p.roof_type, rotate: p.layout?.rotate ?? 90,
+    source: p.source || null, modules: (p.layout?.modules || []).length,
+    files: { pdf: has(base + '.pdf'), png: has(base + '_preview.png'), svg: has(base + '.svg') } };
+});
+
+// a: { invoiceNumber, url, clientName, address, module, expected, roofType, rotate }
+ipcMain.handle('pe:trace', async (_e, a) => {
+  try {
+    const s = getSettings();
+    const img = await peImage(a?.url);
+    if (!img.ok) return { ok: false, error: img.error };
+    const t = await pe.traceImage(img.dataUri, { base: s.peBase, model: s.peModel, key: s.peKey, effort: s.peEffort });
+    if (!t.ok) return { ok: false, error: t.error, raw: t.raw };
+    const conv = pe.traceToLayout(t.trace);
+    const aiRoof = ['tile', 'metal_deck'].includes(t.trace.roof_type) ? t.trace.roof_type : '';
+    const file = pe.writePeProject(PROJECTS, {
+      invoiceNumber: a.invoiceNumber, clientName: a.clientName, address: a.address, module: a.module,
+      expected: a.expected ?? null, roofType: a.roofType || aiRoof || 'tile', rotate: a.rotate, layout: conv.layout,
+      source: { url: a.url, model: t.model, traced: new Date().toISOString(), modules: conv.count,
+        stated_module_count: t.trace.stated_module_count ?? null, roof_type_ai: t.trace.roof_type || null },
+    });
+    const b = await peBuild(file);
+    const notes = [...conv.notes, ...(Array.isArray(t.trace.notes) ? t.trace.notes.map(String) : [])];
+    const stated = Number(t.trace.stated_module_count);
+    if (Number.isFinite(stated) && stated > 0 && stated !== conv.count) {
+      notes.unshift(`The PV drawing says ${stated} modules but the AI traced ${conv.count}. Check the layout.`);
+    }
+    if (!a.roofType && !aiRoof) notes.push('The AI could not tell the roof type: drawn as roof tile. Pick the right one and rebuild.');
+    return { ...b, ai: { model: t.model, seconds: t.seconds, tokens: t.tokens, roof_type: t.trace.roof_type || null,
+      stated_module_count: t.trace.stated_module_count ?? null }, notes };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+// Rebuild without calling the AI again: change roof type and/or rotation.
+ipcMain.handle('pe:build', async (_e, a) => {
+  try {
+    const file = peFile(a?.invoiceNumber);
+    if (!fs.existsSync(file)) return { ok: false, error: 'Trace the PV drawing first.' };
+    pe.writePeProject(PROJECTS, { invoiceNumber: a.invoiceNumber, clientName: a.clientName, address: a.address,
+      module: a.module, expected: a.expected ?? null, roofType: a.roofType, rotate: a.rotate });
+    return await peBuild(file);
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
 });
 
 // ---------- window ----------

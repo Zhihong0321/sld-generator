@@ -20,5 +20,9 @@ contextBridge.exposeInMainWorld('sld', {
   invoiceDetail: (id, hint) => ipcRenderer.invoke('inv:detail', id, hint),
   openFileUrl: (url) => ipcRenderer.invoke('open-file-url', url),
   uploadSld: (a) => ipcRenderer.invoke('inv:upload', a),
+  peImage: (url) => ipcRenderer.invoke('pe:image', url),
+  peLocal: (inv) => ipcRenderer.invoke('pe:local', inv),
+  peTrace: (a) => ipcRenderer.invoke('pe:trace', a),
+  peBuild: (a) => ipcRenderer.invoke('pe:build', a),
   onUpdate: (fn) => ipcRenderer.on('update:status', (_e, p) => fn(p)),
 });

@@ -162,6 +162,10 @@ sldgen build projects/<DRAWING-NO>.json --json
   5. the submission fields still blank
 
 ## PE drawing (module layout plan)
+In the SLD Studio app this is one click: Invoices page → open the invoice → **PE drawing** card →
+**Trace with AI & build** (the AI in Settings → PE drawing AI reads the PV drawing). By hand, or
+from an AI agent:
+
 When the user asks for a **PE drawing** / module layout plan / mounting structure drawing:
 1. Get the job's roof PV drawing (on the invoice: SLD Studio's Invoices page, the
    `pv_system` attachment or the invoice's `pv_system_drawing`). If there are several

@@ -172,6 +172,16 @@
         <label class="field"><span class="lbl">Your name (shown as "uploaded by")</span><input id="sUploader"></label>
       </div>
       <div class="card">
+        <h2>PE drawing AI (reads the roof PV drawing)</h2>
+        <label class="field" style="margin-top:10px"><span class="lbl">Base URL (OpenAI Responses API)</span><input id="sPeBase"></label>
+        <div class="grid2">
+          <label class="field"><span class="lbl">Model</span><input id="sPeModel"></label>
+          <label class="field"><span class="lbl">Reasoning effort</span><select id="sPeEffort"><option>low</option><option>medium</option><option>high</option></select></label>
+        </div>
+        <label class="field"><span class="lbl">API key (leave blank to keep the current one)</span><input id="sPeKey" type="password"></label>
+        <p class="muted" id="sPeKeySource"></p>
+      </div>
+      <div class="card">
         <h2>Engine</h2>
         <label class="field"><span class="lbl">Python command</span><input id="sPython"></label>
       </div>

@@ -139,6 +139,7 @@ SLD project file.
 | `expected_modules` | Optional, e.g. from the invoice package. A different count is labelled on the sheet |
 | `layout.outlines` | Roof edges and obstructions: `{"rect": [x, y, w, h]}` or `{"points": [[x, y], ...]}` (2 points = a line, e.g. a ridge) |
 | `layout.arrays` | Module blocks: `{"at": [x, y], "rows", "cols", "orientation": "portrait"/"landscape", "skip": [[row, col]], "gap", "hook_side": "start"/"end"}` |
+| `layout.modules` | Single modules, e.g. traced from a PV drawing: `{"rect": [x, y, w, h]}` (orientation from the shape) or `{"at": [x, y], "orientation": ...}`. Rails join across neighbouring modules automatically |
 | `layout.rotate` | 0, 90 (clockwise), 180 or 270. Enter the layout as on the invoice PV drawing, then rotate it the way the PE sheet shows it |
 
 Layout units: **1 = the module's short side**. A portrait module is 1 wide and about 2.1
