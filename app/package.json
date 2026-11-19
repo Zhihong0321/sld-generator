@@ -1,0 +1,13 @@
+{
+  "name": "sld-studio",
+  "version": "0.1.0",
+  "description": "Desktop app for the Solar ATAP SLD generator (sldgen)",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^45.4.1"
+  }
+}

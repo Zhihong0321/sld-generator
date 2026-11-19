@@ -170,3 +170,23 @@ docs/
 - MCP server, so chat-based assistants can call `check` and `build` as tools
 - DXF export for AutoCAD touch-ups
 - Hybrid inverter and battery topologies
+
+## Desktop app (SLD Studio)
+
+An Electron app in `app/` wraps the same engine: a form for a new SLD (with AI fill from
+pasted job text), a live preview with the check results, and a history of every drawing
+in `output/`. Needs Node.js 18+ besides Python and Edge/Chrome.
+
+Double-click `SLD Studio.cmd`, or run `cd app && npm install && npm start`.
+
+The AI uses any OpenAI-compatible API (Settings page: base URL, model, key). A design
+that fails the checks is still drawn, as a watermarked "DESIGN CHECK FAILED" draft with
+the errors listed. A drawing number and revision that already exist move to the next
+free revision, so earlier ones are kept.
+
+**Updates (OTA from GitHub).** The app checks this repo's `main` branch on start and every
+6 hours. When there is something new, a bar offers **Update now**, then **Restart now**
+(also under Settings → Updates). A git copy updates with `git pull --ff-only` (it never
+discards your local edits; if they clash, it stops and says so). A zip install downloads
+the new files and keeps `projects/`, `output/` and your library entries, adding any new
+library models. To ship an update to every user, push to `main`.

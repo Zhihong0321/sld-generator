@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>SLD Studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="side">
+  <div class="brand">SLD <span>Studio</span></div>
+  <button class="nav active" data-view="new">New SLD</button>
+  <button class="nav" data-view="history">History</button>
+  <button class="nav" data-view="settings">Settings</button>
+  <div class="foot" id="engineStatus"></div>
+</nav>
+
+<main>
+  <div id="updateBar" class="updatebar" hidden></div>
+  <!-- NEW SLD -->
+  <section id="view-new" class="view active">
+    <div class="split">
+      <div class="formcol">
+        <h1 id="formTitle">New SLD</h1>
+
+        <div class="card ai">
+          <label class="lbl">Paste job details (WhatsApp, quotation, bill text) and let AI fill the form</label>
+          <textarea id="aiText" rows="4" placeholder="e.g. 3 phase, 17 x Jinko 650W, SAJ 10kW, customer Tan Ah Kow, roof to inverter about 25m"></textarea>
+          <div class="row">
+            <button id="aiBtn" class="secondary">Fill form with AI</button>
+            <span id="aiStatus" class="muted"></span>
+          </div>
+          <ul id="aiNotes" class="notes"></ul>
+        </div>
+
+        <form id="form" autocomplete="off">
+          <div class="card">
+            <h2>Required</h2>
+            <div class="field">
+              <span class="lbl">Supply</span>
+              <div class="seg">
+                <label><input type="radio" name="phase" value="1"> Single-phase 230 V</label>
+                <label><input type="radio" name="phase" value="3" checked> Three-phase 400 V</label>
+              </div>
+            </div>
+            <div class="grid2">
+              <label class="field"><span class="lbl">Solar panel</span><select name="module" required></select></label>
+              <label class="field"><span class="lbl">Quantity</span><input name="qty" type="number" min="1" required placeholder="17"></label>
+            </div>
+            <label class="field"><span class="lbl">Inverter</span><select name="inverter" required></select></label>
+          </div>
+
+          <details class="card" open>
+            <summary><h2>Optional (defaults used if blank)</h2></summary>
+            <div class="grid3">
+              <label class="field"><span class="lbl">Strings per MPPT</span><input name="strings" placeholder="split evenly"></label>
+              <label class="field"><span class="lbl">DC run roof → inverter (m)</span><input name="dc_length_m" type="number" step="any" placeholder="20"></label>
+              <label class="field"><span class="lbl">AC run inverter → DB (m)</span><input name="ac_length_m" type="number" step="any" placeholder="15"></label>
+              <label class="field"><span class="lbl">DB main switch (A)</span><input name="main_switch_a" type="number" placeholder="63"></label>
+              <label class="field"><span class="lbl">DB RCCB (A)</span><input name="main_rcd_a" type="number" placeholder="63"></label>
+              <label class="field"><span class="lbl">DB RCCB (mA)</span><input name="main_rcd_ma" type="number" placeholder="100"></label>
+            </div>
+          </details>
+
+          <details class="card">
+            <summary><h2>Title block</h2></summary>
+            <label class="field"><span class="lbl">Customer name (exactly as on TNB bill)</span><input name="account_holder"></label>
+            <label class="field"><span class="lbl">Address</span><input name="address"></label>
+            <div class="grid3">
+              <label class="field"><span class="lbl">TNB account no.</span><input name="tnb_account_no"></label>
+              <label class="field"><span class="lbl">Drawing no.</span><input name="drawing_no" placeholder="auto"></label>
+              <label class="field"><span class="lbl">Revision</span><input name="revision" placeholder="01"></label>
+              <label class="field"><span class="lbl">Drawn by</span><input name="drawn_by"></label>
+            </div>
+          </details>
+
+          <details class="card">
+            <summary><h2>SEDA QP / ST CP</h2></summary>
+            <div class="grid3">
+              <label class="field"><span class="lbl">QP name</span><input name="qp_name"></label>
+              <label class="field"><span class="lbl">QP cert no.</span><input name="qp_cert_no"></label>
+              <label class="field"><span class="lbl">RPVSP</span><input name="rpvsp"></label>
+              <label class="field"><span class="lbl">CP name</span><input name="cp_name"></label>
+              <label class="field"><span class="lbl">CP category</span><input name="cp_category"></label>
+              <label class="field"><span class="lbl">CP cert no.</span><input name="cp_cert_no"></label>
+              <label class="field"><span class="lbl">Contractor reg. no.</span><input name="contractor_reg_no"></label>
+            </div>
+          </details>
+
+          <div class="actions">
+            <button type="submit" id="genBtn" class="primary">Generate</button>
+            <button type="button" id="resetBtn" class="ghost">Clear form</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="resultcol" id="result">
+        <div class="empty">Fill in the required fields and press <b>Generate</b>.<br>The drawing appears here.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section id="view-history" class="view">
+    <div class="split">
+      <div class="formcol">
+        <div class="row between"><h1>History</h1><button id="refreshHist" class="ghost">Refresh</button></div>
+        <input id="histSearch" class="search" placeholder="Search drawing no. or customer">
+        <div id="histList" class="list"></div>
+      </div>
+      <div class="resultcol" id="histDetail">
+        <div class="empty">Select a drawing on the left.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="view-settings" class="view">
+    <div class="narrow">
+      <h1>Settings</h1>
+      <div class="card">
+        <h2>AI (OpenAI-compatible API)</h2>
+        <label class="field"><span class="lbl">Base URL</span><input id="sBase"></label>
+        <label class="field"><span class="lbl">Model</span><input id="sModel"></label>
+        <label class="field"><span class="lbl">API key (leave blank to use the vault)</span><input id="sKey" type="password" placeholder=""></label>
+        <p class="muted" id="sKeySource"></p>
+      </div>
+      <div class="card">
+        <h2>Updates</h2>
+        <p id="uVersion" class="muted" style="margin:10px 0 6px"></p>
+        <p id="uState" style="margin:0 0 8px"></p>
+        <ul id="uChanges" class="notes"></ul>
+        <div class="row">
+          <button id="uCheck" class="ghost">Check for updates</button>
+          <button id="uApply" class="primary" hidden>Update now</button>
+          <button id="uRestart" class="primary" hidden>Restart app</button>
+        </div>
+        <p class="muted" style="font-size:12px">Updates come from GitHub (branch main). The app also checks on start and every 6 hours. Your projects, drawings and library entries are kept.</p>
+      </div>
+      <div class="card">
+        <h2>Engine</h2>
+        <label class="field"><span class="lbl">Python command</span><input id="sPython"></label>
+      </div>
+      <div class="row"><button id="saveSettings" class="primary">Save</button><span id="sStatus" class="muted"></span></div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -13,3 +13,7 @@ build/
 
 # local tool config
 /.ignore
+
+# desktop app dependencies
+/app/node_modules/
+/.sld-version
