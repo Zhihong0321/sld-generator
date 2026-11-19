@@ -10,14 +10,14 @@ const str = (v) => (v == null ? '' : String(v).trim());
 // The two SLD kinds this app uploads. Stored in ee_attachment with category "drawing".
 const SLD_KINDS = {
   sld_seda: { label: 'SLD for SEDA', doc_type: 'sld_seda' },
-  sld_engineering: { label: 'SLD for Engineering Team', doc_type: 'sld_engineering' },
+  sld_engineering: { label: 'SLD for Installation Team', doc_type: 'sld_engineering' },
 };
 
 // Readable names for the doc types already in use.
 const DOC_LABELS = {
   pv_system: 'PV system drawing', roof_angle: 'Roof angle photo', house_db: 'House DB photo', site_other: 'Site photo (other)',
   roof_closeup: 'Roof close-up photo', house_front: 'House front photo', inverter_location: 'Inverter location photo',
-  sunpath: 'Sun path', site_video: 'Site video', sld_seda: 'SLD for SEDA', sld_engineering: 'SLD for Engineering Team',
+  sunpath: 'Sun path', site_video: 'Site video', sld_seda: 'SLD for SEDA', sld_engineering: 'SLD for Installation Team',
 };
 
 // Older file columns still holding links (before ee_attachment existed).

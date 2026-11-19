@@ -459,7 +459,7 @@ function attachmentsHtml(d) {
 
 
 // ---------- upload SLD to the invoice ----------
-const SLD_KIND_LABEL = { sld_seda: 'SLD for SEDA', sld_engineering: 'SLD for Engineering Team' };
+const SLD_KIND_LABEL = { sld_seda: 'SLD for SEDA', sld_engineering: 'SLD for Installation Team' };
 
 function uploadBarHtml(invoiceNumber, pdf, result) {
   const draft = result && result !== 'passed';
