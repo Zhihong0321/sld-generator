@@ -13,6 +13,15 @@ Every number on the drawing comes from deterministic code. The AI's job is only 
 collect the job details and handle the conversation, never to do the engineering
 arithmetic.
 
+## Download the desktop app (Windows)
+
+**[Download SLD Studio setup](https://github.com/Zhihong0321/sld-generator/releases/latest/download/SLD-Studio-Setup.cmd)**,
+then double-click `SLD-Studio-Setup.cmd`. It installs everything to `%USERPROFILE%\sld-generator`
+(Python and Node.js too, through winget, if they are missing), adds an **SLD Studio** shortcut
+to the Desktop and Start Menu, and opens the app. After that the app updates itself from GitHub.
+Windows may show "Windows protected your PC" because the file isn't signed: click
+**More info → Run anyway**.
+
 ## Install in one line
 
 **Windows** (PowerShell):
