@@ -373,6 +373,7 @@ function createWindow() {
   const win = mainWin = new BrowserWindow({
     width: 1400, height: 900, minWidth: 1000, minHeight: 640,
     title: 'SLD Studio', backgroundColor: '#f4f5f7',
+    icon: path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.setMenuBarVisibility(false);
@@ -381,5 +382,6 @@ function createWindow() {
 }
 setInterval(checkForUpdate, UPDATE_EVERY_MS);
 
+if (process.platform === 'win32') app.setAppUserModelId('com.eternalgy.sldstudio');
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => app.quit());

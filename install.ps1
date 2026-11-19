@@ -107,7 +107,8 @@
                     $lnk.TargetPath = $electron
                     $lnk.Arguments = "`"$appDir`""
                     $lnk.WorkingDirectory = $appDir
-                    $lnk.IconLocation = "$electron,0"
+                    $appIcon = Join-Path $appDir "assets\icon.ico"
+                    $lnk.IconLocation = if (Test-Path $appIcon) { "$appIcon,0" } else { "$electron,0" }
                     $lnk.Description = "SLD Studio - Solar ATAP SLD generator"
                     $lnk.Save()
                 }
