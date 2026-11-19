@@ -233,12 +233,16 @@ $('#refreshHist').addEventListener('click', loadHistory);
 async function loadSettings() {
   const s = await window.sld.getSettings();
   $('#sBase').value = s.baseUrl || ''; $('#sModel').value = s.model || ''; $('#sPython').value = s.python || '';
+  $('#sEapiBase').value = s.eapiBase || ''; $('#sEapiKey').value = '';
+  $('#sEapiKey').placeholder = s.hasEapiKey ? `in use: ${s.eapiKey}` : 'not set: needed for the Invoices page';
   $('#sKey').value = ''; $('#sKey').placeholder = s.hasKey ? `in use: ${s.apiKey}` : 'none';
   $('#sKeySource').textContent = `Key source: ${s.keySource}`;
 }
 $('#saveSettings').addEventListener('click', async () => {
   const patch = { baseUrl: $('#sBase').value, model: $('#sModel').value, python: $('#sPython').value };
   if ($('#sKey').value.trim()) patch.apiKey = $('#sKey').value;
+  patch.eapiBase = $('#sEapiBase').value;
+  if ($('#sEapiKey').value.trim()) patch.eapiKey = $('#sEapiKey').value;
   const r = await window.sld.saveSettings(patch);
   $('#sStatus').textContent = r.ok ? 'Saved.' : 'Save failed: ' + r.error;
   loadSettings(); loadLibrary();
@@ -312,3 +316,108 @@ $('#uCheck').addEventListener('click', async () => {
 $('#uApply').addEventListener('click', applyUpdate);
 $('#uRestart').addEventListener('click', () => window.sld.restart());
 drawVersion();
+
+
+// ---------- invoices ----------
+const money = (v) => { const n = Number(v); return Number.isFinite(n) ? 'RM ' + n.toLocaleString('en-MY', { maximumFractionDigits: 2 }) : '—'; };
+const day = (v) => (v ? new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
+const INV = { rows: [], offset: 0, args: null, sel: null };
+
+(() => { // hidden field so a generated job remembers its invoice
+  const h = document.createElement('input'); h.type = 'hidden'; h.name = 'invoice_number'; form.appendChild(h);
+})();
+
+$$('#invBy input').forEach((r) => r.addEventListener('change', () => {
+  const ph = { name: 'e.g. Tan', address: 'e.g. Shah Alam', agent: 'e.g. Ng Zhan Yi' };
+  $('#invQ').placeholder = ph[r.value] || '';
+  $('#invQ').focus();
+}));
+
+$('#invForm').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  INV.args = { by: $('#invForm').by.value, q: $('#invQ').value, includeDeleted: $('#invDeleted').checked };
+  INV.offset = 0; INV.rows = [];
+  runInvoiceSearch();
+});
+$('#invMore').addEventListener('click', () => { INV.offset += 50; runInvoiceSearch(); });
+
+async function runInvoiceSearch() {
+  const btn = $('#invGo'); btn.disabled = true; $('#invStatus').textContent = 'Searching…';
+  try {
+    const r = await window.sld.searchInvoices({ ...INV.args, offset: INV.offset });
+    if (!r.ok) { $('#invStatus').innerHTML = `<div class="issue error">Search failed: ${esc(r.error)}</div>`; return; }
+    INV.rows = INV.rows.concat(r.rows || []);
+    const head = INV.rows.length ? `${INV.rows.length} invoice(s)${r.agents?.length ? ' · agent: ' + r.agents.join(', ') : ''}` : 'No invoices found.';
+    $('#invStatus').innerHTML = esc(head) + (r.notes || []).map((n) => `<div class="issue info" style="margin-top:6px">${esc(n)}</div>`).join('');
+    $('#invMore').hidden = !r.more;
+    drawInvoiceList();
+  } catch (e) {
+    $('#invStatus').innerHTML = `<div class="issue error">Search failed: ${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; }
+}
+
+function drawInvoiceList() {
+  $('#invList').innerHTML = INV.rows.map((r, i) => `
+    <div class="item${INV.sel === r.invoice_number ? ' sel' : ''}" data-i="${i}">
+      <div class="t">${esc(r.customer_name || 'Customer name not loaded')}</div>
+      <div class="r">${esc(day(r.invoice_date))}</div>
+      <div class="s">${esc(r.invoice_number)} · ${esc(r.status || '—')} · ${esc(money(r.total_amount))}${r.agent_name ? ' · ' + esc(r.agent_name) : ''}${r.address ? ' · ' + esc(r.address) : ''}</div>
+    </div>`).join('');
+  $$('.item', $('#invList')).forEach((el) => el.addEventListener('click', () => openInvoice(INV.rows[Number(el.dataset.i)])));
+}
+
+async function openInvoice(row) {
+  INV.sel = row.invoice_number; drawInvoiceList();
+  const pane = $('#invDetail');
+  pane.innerHTML = '<div class="spinner"></div><p class="muted" style="text-align:center">Loading invoice and package…</p>';
+  let d;
+  try { d = await window.sld.invoiceDetail(row.invoice_number || row.id); }
+  catch (e) { d = { ok: false, error: e.message }; }
+  if (!d.ok) { pane.innerHTML = `<div class="issue error">Could not load ${esc(row.invoice_number)}: ${esc(d.error)}</div>`; return; }
+  const inv = d.invoice, sld = d.sld || { form: {}, notes: [], missing: [] };
+  const libName = (kind, key) => { const e = (LIB[kind] || {})[key]; return e ? `${e.brand} ${e.model}` : ''; };
+  const kv = [
+    ['Customer', d.customer?.name], ['Invoice', `${inv.invoice_number} · ${inv.status || '—'} · ${day(inv.invoice_date)}`],
+    ['Amount', `${money(inv.total_amount)} (paid ${money(inv.paid_amount)}, ${d.payments_count} payment${d.payments_count === 1 ? '' : 's'})`],
+    ['Sales agent', inv.agent_name], ['Address', inv.address],
+    ['Package', [inv.package_name, inv.package_type, inv.package_id].filter(Boolean).join(' · ')],
+  ];
+  const f = sld.form || {};
+  const ready = [
+    ['Supply', f.phase ? (Number(f.phase) === 1 ? 'Single-phase' : 'Three-phase') : ''],
+    ['Panel', f.module ? libName('pv_module', f.module) : ''], ['Quantity', f.qty || ''],
+    ['Inverter', f.inverter ? libName('inverter', f.inverter) : ''],
+    ['Customer name', f.account_holder], ['Address', f.address], ['Drawing no.', f.drawing_no],
+  ];
+  const allNotes = [...(d.notes || []), ...(sld.notes || [])];
+  const missing = sld.missing || [];
+  pane.innerHTML = `
+    <div class="reshead"><h1>${esc(inv.invoice_number)}</h1>${sld.complete ? '<span class="badge b-ok">READY FOR SLD</span>' : `<span class="badge b-warn">${missing.length} ITEM${missing.length === 1 ? '' : 'S'} TO PICK</span>`}</div>
+    <div class="btns">
+      <button class="primary" id="invGen">${sld.complete ? 'Generate SLD' : 'Generate SLD (pick missing items)'}</button>
+      <button class="ghost" id="invOpen">Open in form</button>
+    </div>
+    <div class="card"><h2>Invoice</h2><div class="kv" style="margin-top:10px">${kv.map(([k, v]) => `<div>${esc(k)}</div><div>${esc(v || '—')}</div>`).join('')}</div></div>
+    <div class="card"><h2>SLD inputs from this invoice</h2>
+      <ul class="ready">${ready.map(([k, v]) => `<li class="${v ? 'y' : 'n'}"><b>${esc(k)}:</b> ${esc(v || 'not available')}</li>`).join('')}</ul></div>
+    ${allNotes.length ? `<div class="card"><h2>Notes</h2><div style="margin-top:10px">${allNotes.map((n) => `<div class="issue warning">${esc(n)}</div>`).join('')}</div></div>` : ''}
+    ${d.package ? `<details class="card"><summary><h2>Package record</h2></summary><pre class="report">${esc(JSON.stringify(d.package, null, 2))}</pre></details>` : ''}`;
+  $('#invGen').addEventListener('click', () => invoiceToSld(d, sld.complete));
+  $('#invOpen').addEventListener('click', () => invoiceToSld(d, false));
+}
+
+function invoiceToSld(d, autoGenerate) {
+  const sld = d.sld || { form: {}, notes: [] };
+  form.reset(); clearMarks(); $('#aiText').value = ''; $('#aiStatus').textContent = '';
+  const f = { ...sld.form, invoice_number: d.invoice.invoice_number };
+  if (f.phase) setField('phase', f.phase, true);
+  for (const [k, v] of Object.entries(f)) if (k !== 'phase') setField(k, v, k !== 'invoice_number');
+  $$('details.card').forEach((x) => (x.open = true));
+  $('#formTitle').textContent = `SLD for ${d.invoice.invoice_number}`;
+  $('#aiNotes').innerHTML = (sld.notes || []).map((n) => `<li>${esc(n)}</li>`).join('');
+  $('#aiStatus').textContent = `Filled from invoice ${d.invoice.invoice_number}. Highlighted fields came from the invoice.`;
+  $('#result').innerHTML = `<div class="empty">${autoGenerate ? 'Generating…' : 'Pick the items still missing, then press <b>Generate</b>.'}</div>`;
+  show('new');
+  if (autoGenerate) form.requestSubmit();
+  else (form.querySelector('select:invalid, input:invalid') || form.qty).focus();
+}

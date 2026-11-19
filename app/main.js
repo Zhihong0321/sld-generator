@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { Updater, REPO_URL } = require('./updater');
+const { InvoiceApi } = require('./invoices');
 
 const ROOT = path.resolve(__dirname, '..');            // repo root (holds sldgen/, library/, projects/, output/)
 const PROJECTS = path.join(ROOT, 'projects');
@@ -47,6 +48,8 @@ function getSettings() {
     model: saved.model || DEFAULT_MODELS[0],
     apiKey: saved.apiKey || vault.apiKey,
     keySource: saved.apiKey ? 'settings' : (vault.apiKey ? `vault (${VAULT_ENTRY})` : 'none'),
+    eapiBase: saved.eapiBase || 'https://e-api.up.railway.app',
+    eapiKey: saved.eapiKey || '',
   };
 }
 
@@ -175,6 +178,7 @@ ipcMain.handle('generate', async (_e, form) => {
       result: data.result || 'error', summary: data.summary || check.data?.summary || null,
       issues: data.issues || check.data?.issues || [], files: data.files || {}, notes,
       error: data.error || null, customer: project.project.account_holder, project_file: projFile,
+      invoice_number: str(form?.invoice_number) || null,
     };
     try {
       const outDir = path.join(OUTPUT, dn);
@@ -240,11 +244,12 @@ ipcMain.handle('read-text', async (_e, p) => {
 
 ipcMain.handle('settings:get', async () => {
   const s = getSettings();
-  return { ...s, apiKey: s.apiKey ? `${s.apiKey.slice(0, 4)}…${s.apiKey.slice(-4)}` : '', hasKey: !!s.apiKey };
+  const mask = (k) => (k ? `${k.slice(0, 3)}…${k.slice(-2)}` : '');
+  return { ...s, apiKey: mask(s.apiKey), hasKey: !!s.apiKey, eapiKey: mask(s.eapiKey), hasEapiKey: !!s.eapiKey };
 });
 ipcMain.handle('settings:save', async (_e, patch) => {
   const saved = readJson(settingsPath(), {});
-  for (const k of ['python', 'baseUrl', 'model', 'apiKey']) {
+  for (const k of ['python', 'baseUrl', 'model', 'apiKey', 'eapiBase', 'eapiKey']) {
     if (patch && typeof patch[k] === 'string') {
       if (patch[k].trim() === '') delete saved[k]; else saved[k] = patch[k].trim();
     }
@@ -252,6 +257,61 @@ ipcMain.handle('settings:save', async (_e, patch) => {
   try { fs.mkdirSync(path.dirname(settingsPath()), { recursive: true }); fs.writeFileSync(settingsPath(), JSON.stringify(saved, null, 2)); }
   catch (e) { return { ok: false, error: e.message }; }
   return { ok: true };
+});
+
+// ---------- invoices (e-api) ----------
+const invoices = new InvoiceApi(() => { const s = getSettings(); return { base: s.eapiBase, key: s.eapiKey }; });
+
+const norm = (v) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Find library entries whose model code appears anywhere in the package record.
+function matchInPackage(pkg, lib) {
+  if (!pkg) return [];
+  const hay = norm(JSON.stringify(pkg));
+  return Object.entries(lib || {}).filter(([, e]) => e.model && norm(e.model).length >= 6 && hay.includes(norm(e.model))).map(([k]) => k);
+}
+
+function pickNumber(obj, keys) {
+  for (const k of keys) { const n = Number(obj?.[k]); if (Number.isFinite(n) && n > 0) return n; }
+  return null;
+}
+
+function invoiceToForm(d, lib) {
+  const inv = d.invoice || {}, pkg = d.package, notes = [];
+  const form = {
+    account_holder: d.customer?.name || '', address: inv.address || '',
+    drawing_no: `SLD-${inv.invoice_number}`, revision: '01',
+  };
+  // panels
+  const qty = pickNumber(pkg, ['panel_qty', 'panel_quantity', 'qty', 'quantity']) ?? pickNumber(inv, ['panel_qty']);
+  if (qty) form.qty = qty; else notes.push('Panel quantity is not on the invoice or package: enter it.');
+  const modHits = matchInPackage(pkg, lib.pv_module);
+  const rating = pickNumber(pkg, ['panel_rating', 'panel_wattage', 'wattage']) ?? pickNumber(inv, ['panel_rating']);
+  if (modHits.length === 1) form.module = modHits[0];
+  else {
+    const byW = rating ? Object.entries(lib.pv_module || {}).filter(([, e]) => Number(e.wattage_wp) === rating).map(([k]) => k) : [];
+    if (byW.length === 1) { form.module = byW[0]; notes.push(`Panel chosen by wattage (${rating} W): check the model.`); }
+    else notes.push(rating ? `Panel is ${rating} W but the exact model is unknown: pick it.` : 'Panel model is unknown: pick it.');
+  }
+  // inverter + phase
+  const invHits = matchInPackage(pkg, lib.inverter);
+  if (invHits.length === 1) {
+    form.inverter = invHits[0];
+    form.phase = Number(lib.inverter[invHits[0]].phase) === 1 ? 1 : 3;
+  } else notes.push(invHits.length > 1 ? `Package matches several inverters (${invHits.join(', ')}): pick one.` : 'Inverter model is unknown: pick it.');
+  const phaseTxt = norm(JSON.stringify(pkg || {}));
+  if (!form.phase && /singlephase|1phase/.test(phaseTxt)) form.phase = 1;
+  if (!form.phase && /threephase|3phase/.test(phaseTxt)) form.phase = 3;
+  const missing = ['module', 'qty', 'inverter'].filter((k) => !form[k]);
+  return { form, notes, missing, complete: missing.length === 0 };
+}
+
+ipcMain.handle('inv:search', (_e, args) => invoices.search(args || {}));
+ipcMain.handle('inv:detail', async (_e, id) => {
+  const d = await invoices.detail(id);
+  if (!d.ok) return d;
+  const lib = (await runSldgen(['library', '--json'])).data || {};
+  return { ...d, sld: invoiceToForm(d, lib) };
 });
 
 // ---------- LLM intake ----------

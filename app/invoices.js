@@ -1,0 +1,174 @@
+// Invoice lookup against the Eternalgy API gateway (e-api), read-only.
+// Every function returns a result object with `notes` for anything that could not be
+// read; a missing table or field is labelled, never fatal.
+
+const AGENT_CACHE_MS = 10 * 60 * 1000;
+const DETAIL_CONCURRENCY = 4;
+
+const str = (v) => (v == null ? '' : String(v).trim());
+
+class InvoiceApi {
+  constructor(getConfig) {
+    this.getConfig = getConfig;          // () => ({ base, key })
+    this.users = null;
+    this.usersAt = 0;
+  }
+
+  async get(pathAndQuery) {
+    const { base, key } = this.getConfig();
+    if (!key) { const e = new Error('No e-api key: add it under Settings → Invoices API.'); e.status = 0; throw e; }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 30000);
+    try {
+      const r = await fetch(base.replace(/\/+$/, '') + pathAndQuery, { signal: ctrl.signal, headers: { 'x-api-key': key } });
+      const text = await r.text();
+      let body = null;
+      try { body = JSON.parse(text); } catch { /* not json */ }
+      if (!r.ok) {
+        const e = new Error(`${r.status} ${body?.message || text.slice(0, 160)}`);
+        e.status = r.status;
+        throw e;
+      }
+      return body;
+    } catch (e) {
+      if (e.name === 'AbortError') { const x = new Error('e-api did not answer (timed out)'); x.status = 0; throw x; }
+      throw e;
+    } finally { clearTimeout(t); }
+  }
+
+  async loadUsers() {
+    if (this.users && Date.now() - this.usersAt < AGENT_CACHE_MS) return this.users;
+    const all = [];
+    for (let off = 0; off < 5000; off += 100) {
+      const r = await this.get(`/api/data/user?limit=100&offset=${off}`);
+      const rows = Array.isArray(r?.data) ? r.data : [];
+      all.push(...rows);
+      if (rows.length < 100) break;
+    }
+    this.users = all;
+    this.usersAt = Date.now();
+    return all;
+  }
+
+  async agentName(linkedAgent) {
+    if (!linkedAgent) return '';
+    try {
+      const users = await this.loadUsers();
+      const u = users.find((x) => x.linked_agent_profile === linkedAgent || x.bubble_id === linkedAgent);
+      return str(u?.name);
+    } catch { return ''; }
+  }
+
+  rowFromSearch(r, agent = '') {
+    return {
+      id: r.id, invoice_number: str(r.invoice_number) || String(r.id), invoice_date: r.invoice_date || null,
+      status: str(r.status), total_amount: r.total_amount, paid_amount: r.paid_amount,
+      customer_name: str(r.customer_name || r.customer_name_snapshot), agent_name: agent,
+      address: str(r.customer_address_snapshot),
+    };
+  }
+
+  // by: 'name' | 'agent' | 'address'
+  async search({ by, q, offset = 0, includeDeleted = false }) {
+    const query = str(q);
+    const notes = [];
+    const limit = 50;
+    try {
+      let rows = [];
+      let agents = [];
+      if (by === 'agent') {
+        const users = await this.loadUsers();
+        const needle = query.toLowerCase();
+        agents = users.filter((u) => u.linked_agent_profile && str(u.name).toLowerCase().includes(needle)).slice(0, 8);
+        if (!agents.length) return { ok: true, rows: [], agents: [], notes: [`No sales agent name contains "${query}".`] };
+        for (const a of agents) {
+          const r = await this.get(`/api/data/invoice?linked_agent=${encodeURIComponent(a.linked_agent_profile)}&sort=id&order=desc&limit=${limit}&offset=${offset}`);
+          rows.push(...(r?.data || []).map((x) => this.rowFromSearch(x, str(a.name))));
+        }
+        rows.sort((a, b) => (b.id || 0) - (a.id || 0));
+        await this.fillCustomerNames(rows);
+      } else if (by === 'address') {
+        // The CEO key cannot read customer addresses; the invoice address snapshot is the only
+        // address field it sees, so scan recent invoices for it and say what was searched.
+        const r = await this.get(`/api/data/invoice?sort=id&order=desc&limit=100&offset=${offset}`);
+        const needle = query.toLowerCase();
+        rows = (r?.data || []).filter((x) => str(x.customer_address_snapshot).toLowerCase().includes(needle)).map((x) => this.rowFromSearch(x));
+        await this.fillCustomerNames(rows);
+        notes.push('Address search only sees the address copied onto the invoice, and most invoices have none. ' +
+          'Full address search needs an e-api key that can read the customer table.');
+      } else {
+        const r = await this.get(`/api/invoices/search?customer_name=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`);
+        rows = (r?.data || []).map((x) => this.rowFromSearch(x));
+      }
+      const deleted = rows.filter((x) => x.status === 'deleted').length;
+      if (!includeDeleted && deleted) {
+        rows = rows.filter((x) => x.status !== 'deleted');
+        notes.push(`${deleted} deleted invoice(s) hidden.`);
+      }
+      return { ok: true, rows, agents: agents.map((a) => str(a.name)), notes, more: rows.length >= limit };
+    } catch (e) {
+      return { ok: false, rows: [], notes, error: e.message };
+    }
+  }
+
+  async fillCustomerNames(rows) {
+    const todo = rows.filter((r) => !r.customer_name).slice(0, 30);
+    let i = 0;
+    const worker = async () => {
+      while (i < todo.length) {
+        const r = todo[i++];
+        try {
+          const d = await this.get(`/api/invoices/${encodeURIComponent(r.invoice_number || r.id)}`);
+          r.customer_name = str(d?.data?.customer?.name);
+        } catch { /* leave blank */ }
+      }
+    };
+    await Promise.all(Array.from({ length: DETAIL_CONCURRENCY }, worker));
+  }
+
+  async detail(id) {
+    const notes = [];
+    try {
+      const d = await this.get(`/api/invoices/${encodeURIComponent(id)}`);
+      const inv = d?.data?.invoice || {};
+      const customer = d?.data?.customer || {};
+      const payments = Array.isArray(d?.data?.payments) ? d.data.payments : [];
+      for (const w of d?.warnings || []) notes.push(String(w));
+      const agent = await this.agentName(inv.linked_agent);
+
+      // Package: try to read it; label it when the key is not allowed.
+      let pkg = null;
+      const pkgId = str(inv.linked_package || inv.package_id);
+      if (pkgId) {
+        try {
+          const p = await this.get(`/api/data/package/${encodeURIComponent(pkgId)}`);
+          pkg = p?.data || p || null;
+        } catch (e) {
+          notes.push(e.status === 403
+            ? `Package ${pkgId} could not be read: the e-api key has no access to the package table.`
+            : `Package ${pkgId} could not be read: ${e.message}`);
+        }
+      } else notes.push('This invoice has no linked package.');
+
+      return {
+        ok: true,
+        invoice: {
+          id: inv.id, invoice_number: str(inv.invoice_number) || String(inv.id), status: str(inv.status),
+          invoice_date: inv.invoice_date, total_amount: inv.total_amount, paid_amount: inv.paid_amount,
+          panel_qty: inv.panel_qty ?? null, panel_rating: inv.panel_rating ?? null,
+          package_id: pkgId, package_name: str(inv.package_name_snapshot), package_type: str(inv.package_type),
+          address: str(inv.customer_address_snapshot), agent_name: agent,
+          seda_registration: str(inv.linked_seda_registration),
+        },
+        customer: { id: str(customer.customer_id), name: str(customer.name || inv.customer_name_snapshot) },
+        payments_count: payments.length,
+        package: pkg,
+        notes,
+      };
+    } catch (e) {
+      return { ok: false, error: e.message, notes };
+    }
+  }
+}
+
+module.exports = { InvoiceApi };

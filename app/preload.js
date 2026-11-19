@@ -16,5 +16,7 @@ contextBridge.exposeInMainWorld('sld', {
   applyUpdate: () => ipcRenderer.invoke('update:apply'),
   restart: () => ipcRenderer.invoke('update:restart'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  searchInvoices: (a) => ipcRenderer.invoke('inv:search', a),
+  invoiceDetail: (id) => ipcRenderer.invoke('inv:detail', id),
   onUpdate: (fn) => ipcRenderer.on('update:status', (_e, p) => fn(p)),
 });

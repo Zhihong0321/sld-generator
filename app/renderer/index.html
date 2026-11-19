@@ -10,7 +10,8 @@
 <body>
 <nav class="side">
   <div class="brand"><img src="../assets/eternalgy-logo-white.png" alt="Eternalgy"><div class="app-name">SLD <span>Studio</span></div></div>
-  <button class="nav active" data-view="new">New SLD</button>
+  <button class="nav active" data-view="invoices">Invoices</button>
+  <button class="nav" data-view="new">New SLD</button>
   <button class="nav" data-view="history">History</button>
   <button class="nav" data-view="settings">Settings</button>
   <div class="foot" id="engineStatus"></div>
@@ -19,7 +20,33 @@
 <main>
   <div id="updateBar" class="updatebar" hidden></div>
   <!-- NEW SLD -->
-  <section id="view-new" class="view active">
+  <section id="view-invoices" class="view active">
+    <div class="split">
+      <div class="formcol">
+        <h1>Invoices</h1>
+        <form id="invForm" class="card" autocomplete="off">
+          <div class="seg tabs" id="invBy">
+            <label><input type="radio" name="by" value="name" checked> Customer name</label>
+            <label><input type="radio" name="by" value="address"> Address</label>
+            <label><input type="radio" name="by" value="agent"> Sales agent</label>
+          </div>
+          <div class="row">
+            <input id="invQ" placeholder="e.g. Tan">
+            <button class="primary" id="invGo" type="submit">Search</button>
+          </div>
+          <label class="check"><input type="checkbox" id="invDeleted"> Show deleted invoices</label>
+        </form>
+        <div id="invStatus" class="muted"></div>
+        <div id="invList" class="list"></div>
+        <button id="invMore" class="ghost" hidden style="margin-top:10px">Load more</button>
+      </div>
+      <div class="resultcol" id="invDetail">
+        <div class="empty">Search for an invoice, then pick one to generate its SLD.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-new" class="view">
     <div class="split">
       <div class="formcol">
         <h1 id="formTitle">New SLD</h1>
@@ -137,6 +164,11 @@
           <button id="uRestart" class="primary" hidden>Restart app</button>
         </div>
         <p class="muted" style="font-size:12px">Updates come from GitHub (branch main). The app also checks on start and every 6 hours. Your projects, drawings and library entries are kept.</p>
+      </div>
+      <div class="card">
+        <h2>Invoices API (e-api)</h2>
+        <label class="field" style="margin-top:10px"><span class="lbl">Base URL</span><input id="sEapiBase"></label>
+        <label class="field"><span class="lbl">API key</span><input id="sEapiKey" type="password"></label>
       </div>
       <div class="card">
         <h2>Engine</h2>
