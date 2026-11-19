@@ -126,20 +126,24 @@ class InvoiceApi {
     await Promise.all(Array.from({ length: DETAIL_CONCURRENCY }, worker));
   }
 
-  async detail(id) {
+  async detail(id, hint = {}) {
     const notes = [];
     try {
       const d = await this.get(`/api/invoices/${encodeURIComponent(id)}`);
-      const inv = d?.data?.invoice || {};
-      const customer = d?.data?.customer || {};
-      const payments = Array.isArray(d?.data?.payments) ? d.data.payments : [];
-      for (const w of d?.warnings || []) notes.push(String(w));
+      const data = d?.data || {};
+      const inv = data.invoice || {};
+      const customer = data.customer || {};
+      const payments = Array.isArray(data.payments) ? data.payments : [];
+      const products = Array.isArray(data.products) ? data.products : [];
+      const items = Array.isArray(data.invoice_items) ? data.invoice_items : [];
+      const sedaRaw = data.seda_registration || null;
+      for (const w of d?.warnings || []) notes.push(`e-api: ${String(w)}`);
       const agent = await this.agentName(inv.linked_agent);
 
-      // Package: try to read it; label it when the key is not allowed.
-      let pkg = null;
+      // Package: e-api now returns it with the invoice; older gateways need a separate read.
+      let pkg = data.package || null;
       const pkgId = str(inv.linked_package || inv.package_id);
-      if (pkgId) {
+      if (!pkg && pkgId) {
         try {
           const p = await this.get(`/api/data/package/${encodeURIComponent(pkgId)}`);
           pkg = p?.data || p || null;
@@ -148,7 +152,18 @@ class InvoiceApi {
             ? `Package ${pkgId} could not be read: the e-api key has no access to the package table.`
             : `Package ${pkgId} could not be read: ${e.message}`);
         }
-      } else notes.push('This invoice has no linked package.');
+      } else if (!pkgId) notes.push('This invoice has no linked package.');
+
+      // Only the SEDA fields the drawing needs (the record also holds IC numbers and documents).
+      const seda = sedaRaw ? {
+        phase_type: str(sedaRaw.phase_type), installation_address: str(sedaRaw.installation_address),
+        tnb_account_no: str(sedaRaw.tnb_account_no), city: str(sedaRaw.city), state: str(sedaRaw.state),
+        seda_status: str(sedaRaw.seda_status),
+      } : null;
+      if (!seda && inv.linked_seda_registration) notes.push('SEDA registration was not returned, so supply phase and address come from the package only.');
+
+      const name = str(customer.name) || str(inv.customer_name_snapshot) || str(hint.customer_name);
+      if (!str(customer.name) && name) notes.push('Customer name taken from the invoice list (customer record not returned).');
 
       return {
         ok: true,
@@ -156,13 +171,13 @@ class InvoiceApi {
           id: inv.id, invoice_number: str(inv.invoice_number) || String(inv.id), status: str(inv.status),
           invoice_date: inv.invoice_date, total_amount: inv.total_amount, paid_amount: inv.paid_amount,
           panel_qty: inv.panel_qty ?? null, panel_rating: inv.panel_rating ?? null,
-          package_id: pkgId, package_name: str(inv.package_name_snapshot), package_type: str(inv.package_type),
-          address: str(inv.customer_address_snapshot), agent_name: agent,
+          package_id: pkgId, package_name: str(pkg?.package_name || inv.package_name_snapshot), package_type: str(pkg?.type || inv.package_type),
+          address: str(seda?.installation_address || inv.customer_address_snapshot), agent_name: agent,
           seda_registration: str(inv.linked_seda_registration),
         },
-        customer: { id: str(customer.customer_id), name: str(customer.name || inv.customer_name_snapshot) },
+        customer: { id: str(customer.customer_id || inv.linked_customer), name },
         payments_count: payments.length,
-        package: pkg,
+        package: pkg, products, items, seda,
         notes,
       };
     } catch (e) {

@@ -371,7 +371,7 @@ async function openInvoice(row) {
   const pane = $('#invDetail');
   pane.innerHTML = '<div class="spinner"></div><p class="muted" style="text-align:center">Loading invoice and package…</p>';
   let d;
-  try { d = await window.sld.invoiceDetail(row.invoice_number || row.id); }
+  try { d = await window.sld.invoiceDetail(row.invoice_number || row.id, { customer_name: row.customer_name }); }
   catch (e) { d = { ok: false, error: e.message }; }
   if (!d.ok) { pane.innerHTML = `<div class="issue error">Could not load ${esc(row.invoice_number)}: ${esc(d.error)}</div>`; return; }
   const inv = d.invoice, sld = d.sld || { form: {}, notes: [], missing: [] };
@@ -380,6 +380,7 @@ async function openInvoice(row) {
     ['Customer', d.customer?.name], ['Invoice', `${inv.invoice_number} · ${inv.status || '—'} · ${day(inv.invoice_date)}`],
     ['Amount', `${money(inv.total_amount)} (paid ${money(inv.paid_amount)}, ${d.payments_count} payment${d.payments_count === 1 ? '' : 's'})`],
     ['Sales agent', inv.agent_name], ['Address', inv.address],
+    ['Equipment', (d.products || []).map((p) => String(p.name || p.description || '').trim()).filter(Boolean).join(' · ')],
     ['Package', [inv.package_name, inv.package_type, inv.package_id].filter(Boolean).join(' · ')],
   ];
   const f = sld.form || {};
@@ -387,7 +388,7 @@ async function openInvoice(row) {
     ['Supply', f.phase ? (Number(f.phase) === 1 ? 'Single-phase' : 'Three-phase') : ''],
     ['Panel', f.module ? libName('pv_module', f.module) : ''], ['Quantity', f.qty || ''],
     ['Inverter', f.inverter ? libName('inverter', f.inverter) : ''],
-    ['Customer name', f.account_holder], ['Address', f.address], ['Drawing no.', f.drawing_no],
+    ['Customer name', f.account_holder], ['Address', f.address], ['TNB account no.', f.tnb_account_no], ['Drawing no.', f.drawing_no],
   ];
   const allNotes = [...(d.notes || []), ...(sld.notes || [])];
   const missing = sld.missing || [];

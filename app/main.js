@@ -264,51 +264,89 @@ const invoices = new InvoiceApi(() => { const s = getSettings(); return { base: 
 
 const norm = (v) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-// Find library entries whose model code appears anywhere in the package record.
-function matchInPackage(pkg, lib) {
-  if (!pkg) return [];
-  const hay = norm(JSON.stringify(pkg));
-  return Object.entries(lib || {}).filter(([, e]) => e.model && norm(e.model).length >= 6 && hay.includes(norm(e.model))).map(([k]) => k);
-}
-
 function pickNumber(obj, keys) {
   for (const k of keys) { const n = Number(obj?.[k]); if (Number.isFinite(n) && n > 0) return n; }
   return null;
 }
 
+const productText = (p) => [p?.name, p?.description, p?.label, p?.pdf_product].filter(Boolean).join(' ');
+const brandToken = (b) => norm(String(b || '').split(/\s+/)[0]);   // "Jinko Solar" -> "jinko"
+const seriesToken = (m) => norm(String(m || '').split(/[-\s]/)[0]);  // "R6-8K-T2" -> "r6"
+
+// Score library entries against one ERP product. Returns the single best key, or the tie.
+function matchProduct(text, lib, scoreFn) {
+  const hay = norm(text);
+  const scored = Object.entries(lib || {}).map(([k, e]) => {
+    let sc = norm(e.model).length >= 6 && hay.includes(norm(e.model)) ? 100 : 0;  // exact model code
+    sc += scoreFn(e, hay);
+    return [k, sc];
+  }).filter(([, sc]) => sc > 0).sort((a, b) => b[1] - a[1]);
+  if (!scored.length) return { key: null, ties: [] };
+  const top = scored.filter(([, sc]) => sc === scored[0][1]).map(([k]) => k);
+  return { key: top.length === 1 ? top[0] : null, ties: top, score: scored[0][1] };
+}
+
 function invoiceToForm(d, lib) {
-  const inv = d.invoice || {}, pkg = d.package, notes = [];
+  const inv = d.invoice || {}, pkg = d.package || {}, seda = d.seda || {}, notes = [];
+  const products = Array.isArray(d.products) ? d.products : [];
   const form = {
-    account_holder: d.customer?.name || '', address: inv.address || '',
-    drawing_no: `SLD-${inv.invoice_number}`, revision: '01',
+    account_holder: d.customer?.name || '', address: seda.installation_address || inv.address || '',
+    tnb_account_no: seda.tnb_account_no || '', drawing_no: `SLD-${inv.invoice_number}`, revision: '01',
   };
+  const pkgText = [pkg.package_name, pkg.invoice_desc, ...(d.items || []).map((i) => i?.description)].filter(Boolean).join('\n');
+
+  // phase: SEDA form first, then "[3P]"/"[1P]" tags in the package or product names
+  const allText = pkgText + ' ' + products.map(productText).join(' ');
+  const ph = Number(seda.phase_type);
+  if (ph === 1 || ph === 3) form.phase = ph;
+  else if (/\[\s*3\s*P\s*\]|three[\s-]*phase|3[\s-]*phase/i.test(allText)) form.phase = 3;
+  else if (/\[\s*1\s*P\s*\]|single[\s-]*phase|1[\s-]*phase/i.test(allText)) form.phase = 1;
+
   // panels
-  const qty = pickNumber(pkg, ['panel_qty', 'panel_quantity', 'qty', 'quantity']) ?? pickNumber(inv, ['panel_qty']);
+  const qty = pickNumber(pkg, ['panel_qty']) ?? pickNumber(inv, ['panel_qty']) ?? (Number((pkgText.match(/(\d+)\s*X\s*\d{3}\s*W/i) || [])[1]) || null);
   if (qty) form.qty = qty; else notes.push('Panel quantity is not on the invoice or package: enter it.');
-  const modHits = matchInPackage(pkg, lib.pv_module);
-  const rating = pickNumber(pkg, ['panel_rating', 'panel_wattage', 'wattage']) ?? pickNumber(inv, ['panel_rating']);
-  if (modHits.length === 1) form.module = modHits[0];
-  else {
-    const byW = rating ? Object.entries(lib.pv_module || {}).filter(([, e]) => Number(e.wattage_wp) === rating).map(([k]) => k) : [];
-    if (byW.length === 1) { form.module = byW[0]; notes.push(`Panel chosen by wattage (${rating} W): check the model.`); }
-    else notes.push(rating ? `Panel is ${rating} W but the exact model is unknown: pick it.` : 'Panel model is unknown: pick it.');
+  const panelProd = products.find((p) => p.bubble_id && p.bubble_id === pkg.panel) || products.find((p) => Number(p.solar_output_rating) > 0);
+  const watt = Number(panelProd?.solar_output_rating) || pickNumber(inv, ['panel_rating']) || Number((pkgText.match(/(\d{3})\s*W\b/i) || [])[1]) || null;
+  const panelText = panelProd ? productText(panelProd) : pkgText;
+  const pm = matchProduct(panelText, lib.pv_module, (e, hay) =>
+    (watt && Number(e.wattage_wp) === watt ? 10 : 0) + (watt && Number(e.wattage_wp) === watt && hay.includes(brandToken(e.brand)) ? 5 : 0));
+  if (pm.key && (pm.score >= 15 || pm.score >= 100)) form.module = pm.key;
+  else if (pm.key && pm.score >= 10) { form.module = pm.key; notes.push(`Panel chosen by wattage only (${watt} W): check the model.`); }
+  else notes.push(`Panel "${(panelProd?.name || '').trim() || (watt ? watt + ' W' : 'unknown')}" is not in the SLD library: add it, or pick the closest.`);
+
+  // inverter(s)
+  const invIds = [pkg.inverter_1, pkg.inverter_2, pkg.inverter_3, pkg.inverter_4].filter(Boolean);
+  let invProds = products.filter((p) => invIds.includes(p.bubble_id));
+  if (!invProds.length) invProds = products.filter((p) => /inverter/i.test(productText(p)));
+  if (invIds.length > 1) notes.push(`The package has ${invIds.length} inverters; this SLD draws one. Check the drawing.`);
+  const invProd = invProds[0];
+  const invText = invProd ? productText(invProd) : pkgText;
+  const kw = Number((invText.match(/(\d+(?:\.\d+)?)\s*k\s*(?:w|tl)/i) || [])[1]) || null;
+  // An inverter matches only when brand, series (e.g. R6 vs R5 vs H2) and kW all agree and
+  // the phase does not conflict; a near miss is reported, never substituted.
+  const im = matchProduct(invText, lib.inverter, (e, hay) => {
+    const brandOk = hay.includes(brandToken(e.brand));
+    const seriesOk = seriesToken(e.model) && hay.includes(seriesToken(e.model));
+    const kwOk = kw && Number(e.rated_ac_kw) === kw;
+    const phaseOk = !form.phase || Number(e.phase) === form.phase;
+    return brandOk && seriesOk && kwOk && phaseOk ? 15 : 0;
+  });
+  if (im.key && im.score >= 15) {
+    form.inverter = im.key;
+    if (!form.phase) form.phase = Number(lib.inverter[im.key].phase) === 1 ? 1 : 3;
+  } else notes.push(im.ties.length > 1 ? `Inverter "${(invProd?.name || '').trim()}" matches several library entries (${im.ties.join(', ')}): pick one.`
+    : `Inverter "${(invProd?.name || '').trim() || 'unknown'}" is not in the SLD library: add it, or pick the closest.`);
+  if (form.inverter && form.phase && Number(lib.inverter[form.inverter].phase) !== form.phase) {
+    notes.push(`Supply on the SEDA form is ${form.phase}-phase but the inverter is ${lib.inverter[form.inverter].phase}-phase: check.`);
   }
-  // inverter + phase
-  const invHits = matchInPackage(pkg, lib.inverter);
-  if (invHits.length === 1) {
-    form.inverter = invHits[0];
-    form.phase = Number(lib.inverter[invHits[0]].phase) === 1 ? 1 : 3;
-  } else notes.push(invHits.length > 1 ? `Package matches several inverters (${invHits.join(', ')}): pick one.` : 'Inverter model is unknown: pick it.');
-  const phaseTxt = norm(JSON.stringify(pkg || {}));
-  if (!form.phase && /singlephase|1phase/.test(phaseTxt)) form.phase = 1;
-  if (!form.phase && /threephase|3phase/.test(phaseTxt)) form.phase = 3;
+  if (!form.account_holder) notes.push('Customer name is missing from the invoice record: type it as on the TNB bill.');
   const missing = ['module', 'qty', 'inverter'].filter((k) => !form[k]);
   return { form, notes, missing, complete: missing.length === 0 };
 }
 
 ipcMain.handle('inv:search', (_e, args) => invoices.search(args || {}));
-ipcMain.handle('inv:detail', async (_e, id) => {
-  const d = await invoices.detail(id);
+ipcMain.handle('inv:detail', async (_e, id, hint) => {
+  const d = await invoices.detail(id, hint || {});
   if (!d.ok) return d;
   const lib = (await runSldgen(['library', '--json'])).data || {};
   return { ...d, sld: invoiceToForm(d, lib) };
