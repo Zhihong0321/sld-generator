@@ -50,6 +50,7 @@ function getSettings() {
     keySource: saved.apiKey ? 'settings' : (vault.apiKey ? `vault (${VAULT_ENTRY})` : 'none'),
     eapiBase: saved.eapiBase || 'https://e-api.up.railway.app',
     eapiKey: saved.eapiKey || '',
+    uploaderName: saved.uploaderName || require('os').userInfo().username || 'SLD Studio',
   };
 }
 
@@ -217,6 +218,7 @@ ipcMain.handle('history', async () => {
         folder: dir, stem, drawing_no: m ? m[1] : stem, revision: m ? m[2] : '',
         customer: job?.customer ?? proj?.project?.account_holder ?? '',
         result: job?.result || null, summary: job?.summary || null, issues: job?.issues || [], notes: job?.notes || [],
+        invoice_number: job?.invoice_number || null,
         created: job?.created || (mtime ? new Date(mtime).toISOString() : ''), mtime,
         files: { svg: path.join(dir, svg), pdf: has('.pdf'), png: has('_preview.png'), report: has('_design-report.md') },
         project_file: projectFile,
@@ -249,7 +251,7 @@ ipcMain.handle('settings:get', async () => {
 });
 ipcMain.handle('settings:save', async (_e, patch) => {
   const saved = readJson(settingsPath(), {});
-  for (const k of ['python', 'baseUrl', 'model', 'apiKey', 'eapiBase', 'eapiKey']) {
+  for (const k of ['python', 'baseUrl', 'model', 'apiKey', 'eapiBase', 'eapiKey', 'uploaderName']) {
     if (patch && typeof patch[k] === 'string') {
       if (patch[k].trim() === '') delete saved[k]; else saved[k] = patch[k].trim();
     }
@@ -345,6 +347,7 @@ function invoiceToForm(d, lib) {
 }
 
 ipcMain.handle('inv:search', (_e, args) => invoices.search(args || {}));
+ipcMain.handle('inv:upload', (_e, a) => invoices.uploadSld({ ...(a || {}), uploader: getSettings().uploaderName }));
 ipcMain.handle('inv:detail', async (_e, id, hint) => {
   const d = await invoices.detail(id, hint || {});
   if (!d.ok) return d;
@@ -465,6 +468,12 @@ ipcMain.handle('app:version', async () => {
   return { version: pkg.version || '', sha: v.sha, mode: v.mode, repo: REPO_URL, root: ROOT, last: updater.last };
 });
 ipcMain.handle('open-external', (_e, url) => { if (/^https:\/\/github\.com\//.test(String(url))) shell.openExternal(url); });
+const FILE_HOSTS = /^https:\/\/([a-z0-9-]+\.r2\.dev|admin\.atap\.solar|[a-z0-9-]+\.cdn\.bubble\.io)\//i;
+ipcMain.handle('open-file-url', (_e, url) => {
+  const u = String(url || '');
+  if (!FILE_HOSTS.test(u)) return { ok: false, error: `Not an attachment link: ${u}` };
+  shell.openExternal(u); return { ok: true };
+});
 
 // ---------- window ----------
 function createWindow() {

@@ -162,6 +162,7 @@ function renderResult(el, r, opts = {}) {
       ${files.svg || files.pdf ? `<button class="ghost" data-folder="${esc(files.pdf || files.svg)}">Show in folder</button>` : ''}
       ${opts.revise && r.project_file ? `<button class="secondary" data-revise="${esc(r.project_file)}" data-rev="${esc(r.revision || '')}">Revise in form</button>` : ''}
     </div>
+    ${r.invoice_number && files.pdf ? uploadBarHtml(r.invoice_number, files.pdf, r.result) : ''}
     ${preview ? `<div class="sheet"><img alt="SLD preview" src="${fileUrl(preview)}"></div>` : ''}
     ${summaryHtml(r.summary)}
     ${issuesHtml(r.issues, r.notes, r.problems)}`;
@@ -171,6 +172,7 @@ function renderResult(el, r, opts = {}) {
   }));
   $$('[data-folder]', el).forEach((b) => b.addEventListener('click', () => window.sld.showInFolder(b.dataset.folder)));
   $$('[data-revise]', el).forEach((b) => b.addEventListener('click', () => reviseFrom(b.dataset.revise, b.dataset.rev)));
+  wireUploadButtons(el);
 }
 
 // ---------- revise ----------
@@ -233,7 +235,7 @@ $('#refreshHist').addEventListener('click', loadHistory);
 async function loadSettings() {
   const s = await window.sld.getSettings();
   $('#sBase').value = s.baseUrl || ''; $('#sModel').value = s.model || ''; $('#sPython').value = s.python || '';
-  $('#sEapiBase').value = s.eapiBase || ''; $('#sEapiKey').value = '';
+  $('#sEapiBase').value = s.eapiBase || ''; $('#sEapiKey').value = ''; $('#sUploader').value = s.uploaderName || '';
   $('#sEapiKey').placeholder = s.hasEapiKey ? `in use: ${s.eapiKey}` : 'not set: needed for the Invoices page';
   $('#sKey').value = ''; $('#sKey').placeholder = s.hasKey ? `in use: ${s.apiKey}` : 'none';
   $('#sKeySource').textContent = `Key source: ${s.keySource}`;
@@ -242,6 +244,7 @@ $('#saveSettings').addEventListener('click', async () => {
   const patch = { baseUrl: $('#sBase').value, model: $('#sModel').value, python: $('#sPython').value };
   if ($('#sKey').value.trim()) patch.apiKey = $('#sKey').value;
   patch.eapiBase = $('#sEapiBase').value;
+  patch.uploaderName = $('#sUploader').value;
   if ($('#sEapiKey').value.trim()) patch.eapiKey = $('#sEapiKey').value;
   const r = await window.sld.saveSettings(patch);
   $('#sStatus').textContent = r.ok ? 'Saved.' : 'Save failed: ' + r.error;
@@ -401,8 +404,15 @@ async function openInvoice(row) {
     <div class="card"><h2>Invoice</h2><div class="kv" style="margin-top:10px">${kv.map(([k, v]) => `<div>${esc(k)}</div><div>${esc(v || '—')}</div>`).join('')}</div></div>
     <div class="card"><h2>SLD inputs from this invoice</h2>
       <ul class="ready">${ready.map(([k, v]) => `<li class="${v ? 'y' : 'n'}"><b>${esc(k)}:</b> ${esc(v || 'not available')}</li>`).join('')}</ul></div>
+    ${attachmentsHtml(d)}
     ${allNotes.length ? `<div class="card"><h2>Notes</h2><div style="margin-top:10px">${allNotes.map((n) => `<div class="issue warning">${esc(n)}</div>`).join('')}</div></div>` : ''}
     ${d.package ? `<details class="card"><summary><h2>Package record</h2></summary><pre class="report">${esc(JSON.stringify(d.package, null, 2))}</pre></details>` : ''}`;
+  $$('[data-url]', pane).forEach((a) => a.addEventListener('click', async (ev) => {
+    ev.preventDefault();
+    const r = await window.sld.openFileUrl(a.dataset.url);
+    if (!r.ok) alert(r.error);
+  }));
+  showLocalDrawings(inv.invoice_number);
   $('#invGen').addEventListener('click', () => invoiceToSld(d, sld.complete));
   $('#invOpen').addEventListener('click', () => invoiceToSld(d, false));
 }
@@ -421,4 +431,78 @@ function invoiceToSld(d, autoGenerate) {
   show('new');
   if (autoGenerate) form.requestSubmit();
   else (form.querySelector('select:invalid, input:invalid') || form.qty).focus();
+}
+
+
+// ---------- attachments ----------
+function attachmentsHtml(d) {
+  const files = d.attachments || [];
+  const up = d.sld_uploads || {};
+  const link = (f, text) => `<a href="#" data-url="${esc(f.url)}">${esc(text || f.name || 'open')}</a>`;
+  const sldRows = Object.entries(up).map(([, k]) => {
+    const l = k.latest;
+    const state = k.uploaded
+      ? `<span class="badge b-ok">UPLOADED</span> ${link(l, l.name)}${l.uploaded_at ? ' · ' + esc(day(l.uploaded_at)) : ''}${l.uploaded_by ? ' · ' + esc(l.uploaded_by) : ''}${k.count > 1 ? ` · ${k.count} versions` : ''}`
+      : '<span class="badge b-none">NOT UPLOADED</span>';
+    return `<div>${esc(k.label)}</div><div>${state}</div>`;
+  }).join('');
+  const groups = {};
+  for (const f of files) (groups[f.label] = groups[f.label] || []).push(f);
+  const list = Object.entries(groups).sort((a, b) => b[1].length - a[1].length).map(([label, fs]) => `
+    <li><b>${esc(label)}</b> (${fs.length}): ${fs.slice(0, 6).map((f, i) => link(f, fs.length > 1 ? String(i + 1) : f.name)).join(', ')}${fs.length > 6 ? ` … +${fs.length - 6}` : ''}</li>`).join('');
+  return `<div class="card"><h2>Attachments</h2>
+    <div class="kv" style="margin-top:10px">${sldRows}</div>
+    <div id="invLocal" style="margin-top:12px"></div>
+    <ul class="notes" style="margin-top:12px">${list || '<li class="muted">No files attached to this invoice yet.</li>'}</ul>
+  </div>`;
+}
+
+
+// ---------- upload SLD to the invoice ----------
+const SLD_KIND_LABEL = { sld_seda: 'SLD for SEDA', sld_engineering: 'SLD for Engineering Team' };
+
+function uploadBarHtml(invoiceNumber, pdf, result) {
+  const draft = result && result !== 'passed';
+  return `<div class="card upbar"><h2>Upload to invoice ${esc(invoiceNumber)}</h2>
+    ${draft ? '<div class="issue warning" style="margin-top:8px">This drawing failed the design check (watermarked draft). It can still be uploaded, but check it first.</div>' : ''}
+    <div class="btns" style="margin:10px 0 0">
+      ${Object.entries(SLD_KIND_LABEL).map(([k, l]) => `<button class="secondary" data-upload="${k}" data-inv="${esc(invoiceNumber)}" data-pdf="${esc(pdf)}">Upload as ${esc(l)}</button>`).join('')}
+    </div><div class="upmsg"></div></div>`;
+}
+
+function wireUploadButtons(scope) {
+  $$('[data-upload]', scope).forEach((b) => b.addEventListener('click', async () => {
+    const kind = b.dataset.upload, inv = b.dataset.inv, pdf = b.dataset.pdf;
+    const name = pdf.split(/[\\/]/).pop();
+    if (!confirm(`Upload ${name}\nto invoice ${inv}\nas "${SLD_KIND_LABEL[kind]}"?\n\nIt will be visible in the ERP.`)) return;
+    const msg = b.closest('.card')?.querySelector('.upmsg');
+    const all = $$('[data-upload]', b.closest('.card'));
+    all.forEach((x) => (x.disabled = true));
+    if (msg) msg.innerHTML = '<p class="muted">Uploading…</p>';
+    let r;
+    try { r = await window.sld.uploadSld({ invoiceNumber: inv, kind, pdfPath: pdf }); }
+    catch (e) { r = { ok: false, error: e.message }; }
+    all.forEach((x) => (x.disabled = false));
+    if (msg) msg.innerHTML = r.ok
+      ? `<div class="issue info" style="background:var(--ok-bg);color:var(--ok)"><b>Uploaded</b> as ${esc(r.kind)} to ${esc(r.invoiceNumber)}${r.url ? ` · <a href="#" data-url="${esc(r.url)}">open</a>` : ''}</div>`
+      : `<div class="issue ${r.notLive ? 'warning' : 'error'}">${esc(r.error)}</div>`;
+    $$('[data-url]', msg || document).forEach((a) => a.addEventListener('click', (ev) => { ev.preventDefault(); window.sld.openFileUrl(a.dataset.url); }));
+    if (r.ok && INV.sel === inv && $('#invDetail .reshead')) {
+      const row = INV.rows.find((x) => x.invoice_number === inv);
+      if (row) openInvoice(row);   // refresh the attachment status
+    }
+  }));
+}
+
+async function showLocalDrawings(invoiceNumber) {
+  const box = $('#invLocal');
+  if (!box) return;
+  let hist = [];
+  try { hist = await window.sld.history(); } catch { /* none */ }
+  const mine = hist.filter((h) => h.invoice_number === invoiceNumber || h.drawing_no === `SLD-${invoiceNumber}`);
+  if (!mine.length) { box.innerHTML = '<p class="muted">No SLD generated for this invoice on this PC yet. Generate it first, then upload.</p>'; return; }
+  const h = mine[0];
+  box.innerHTML = `<p style="margin:0 0 4px"><b>Latest drawing on this PC:</b> ${esc(h.stem)} ${statusBadge(h.result, h.issues)}${mine.length > 1 ? ` <span class="muted">(${mine.length} revisions)</span>` : ''}</p>
+    ${h.files.pdf ? uploadBarHtml(invoiceNumber, h.files.pdf, h.result).replace('class="card upbar"', 'class="upbar"') : '<p class="muted">This drawing has no PDF.</p>'}`;
+  wireUploadButtons(box);
 }
