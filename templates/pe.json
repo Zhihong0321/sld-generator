@@ -1,0 +1,24 @@
+{
+  "drawing": "pe",
+  "project": {
+    "client_name": "",
+    "address": ["", "", ""],
+    "drawing_no": "",
+    "revision": "00",
+    "date": "",
+    "drawn_by": "",
+    "approved_by": ""
+  },
+  "pv_module": "REPLACE-WITH-LIBRARY-KEY",
+  "roof_type": "tile",
+  "expected_modules": null,
+  "layout": {
+    "rotate": 90,
+    "outlines": [
+      { "rect": [0, 0, 12, 7] }
+    ],
+    "arrays": [
+      { "at": [1, 1], "rows": 2, "cols": 5, "orientation": "portrait" }
+    ]
+  }
+}

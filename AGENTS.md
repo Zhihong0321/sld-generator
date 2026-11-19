@@ -161,6 +161,20 @@ sldgen build projects/<DRAWING-NO>.json --json
   4. all warnings
   5. the submission fields still blank
 
+## PE drawing (module layout plan)
+When the user asks for a **PE drawing** / module layout plan / mounting structure drawing:
+1. Get the job's roof PV drawing (on the invoice: SLD Studio's Invoices page, the
+   `pv_system` attachment or the invoice's `pv_system_drawing`). If there are several
+   versions, ask which one is final. Get the roof type: `tile` or `metal_deck`.
+2. Copy `templates/pe.json` to `projects/<name>-PE.json`. Fill the client name and address
+   exactly as given. Trace the PV drawing into `layout.outlines` and `layout.arrays`
+   (units: module short side; see `docs/TOOLS.md#pe`), and set `layout.rotate` to match
+   how the PE sheet should face (the PE is usually the PV drawing turned 90 degrees).
+   Set `expected_modules` to the invoice package's panel count.
+3. `sldgen pe projects/<name>-PE.json --json`, open the PNG preview, and compare it with
+   the PV drawing: same module count, same blocks, same gaps.
+4. Report the PDF path, the module count and kWp, and every item in `problems`.
+
 ## Revisions
 Edit the job's project file, increment `project.revision`, then check and build again.
 Each revision gets its own file name, so earlier revisions are kept.

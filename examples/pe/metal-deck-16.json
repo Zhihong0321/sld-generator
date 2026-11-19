@@ -1,0 +1,27 @@
+{
+  "drawing": "pe",
+  "project": {
+    "client_name": "Sample Customer.",
+    "address": ["No 1, Jalan Contoh 1,", "Taman Contoh,", "81100 Johor Bahru,", "Johor."],
+    "drawing_no": "EXAMPLE-PE-METAL-DECK",
+    "revision": "00",
+    "date": "",
+    "drawn_by": "",
+    "approved_by": ""
+  },
+  "pv_module": "jinko-jkm650n-66ql6-bdv",
+  "roof_type": "metal_deck",
+  "expected_modules": 16,
+  "layout": {
+    "rotate": 90,
+    "outlines": [
+      { "rect": [0.3, 0.4, 12.4, 6.2] },
+      { "rect": [6.2, 0.4, 3.2, 3.0] }
+    ],
+    "arrays": [
+      { "at": [1.2, 4.3], "rows": 1, "cols": 11, "orientation": "portrait", "gap": 0.05 },
+      { "at": [1.2, 3.2], "rows": 1, "cols": 2, "orientation": "landscape" },
+      { "at": [9.3, 2.3], "rows": 1, "cols": 3, "orientation": "portrait", "gap": 0.05 }
+    ]
+  }
+}

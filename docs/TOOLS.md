@@ -13,6 +13,7 @@ mode AI agents should use.
 | [`sldgen init`](#init) | Create a project file from the template |
 | [`sldgen check`](#check) | Run calculations and compliance checks (no files written) |
 | [`sldgen build`](#build) | Check, then write the PDF, PNG, SVG and design report |
+| [`sldgen pe`](#pe) | Draw the PE module layout plan (roof tile or metal deck) |
 | [`sldgen schema`](#schema) | Print the project file JSON Schema |
 
 ## Exit codes
@@ -120,6 +121,36 @@ plus `"files": {"pdf": …, "png": …, "svg": …, "report": …}`.
 
 PDF export uses headless Microsoft Edge or Google Chrome, found automatically. Set
 `SLD_BROWSER` to the path of a Chromium-based browser to choose one.
+
+## pe
+```bash
+sldgen pe projects/<name>-PE.json [--out DIR] [--no-png] [--json]
+```
+Draws the A3 **MODULE LAYOUT PLAN (RETROFITTED)** sheet that goes to the PE. It uses
+its own small file (start from `templates/pe.json`; examples in `examples/pe/`), not the
+SLD project file.
+
+| Field | Meaning |
+|---|---|
+| `project.client_name`, `project.address` | Client block. `address` is a list of lines, or one string that is split at commas |
+| `project.drawing_no`, `revision`, `date`, `drawn_by`, `approved_by` | Title block table (may be blank) |
+| `pv_module` | Library key. Brand and Wp come from the library; kWp = modules x Wp |
+| `roof_type` | `tile` (tile hook details) or `metal_deck` (Klip-lok hook details) |
+| `expected_modules` | Optional, e.g. from the invoice package. A different count is labelled on the sheet |
+| `layout.outlines` | Roof edges and obstructions: `{"rect": [x, y, w, h]}` or `{"points": [[x, y], ...]}` (2 points = a line, e.g. a ridge) |
+| `layout.arrays` | Module blocks: `{"at": [x, y], "rows", "cols", "orientation": "portrait"/"landscape", "skip": [[row, col]], "gap", "hook_side": "start"/"end"}` |
+| `layout.rotate` | 0, 90 (clockwise), 180 or 270. Enter the layout as on the invoice PV drawing, then rotate it the way the PE sheet shows it |
+
+Layout units: **1 = the module's short side**. A portrait module is 1 wide and about 2.1
+tall (the library's `length_mm` / `width_mm` set this when given). Measure the module
+width in pixels on the PV drawing and divide every position by it. y grows downwards.
+Rails (2 per module, across the long side) and hooks are placed automatically.
+
+It always writes the sheet. Anything wrong with the file (unknown roof type, module not in
+the library, unreadable array, count different from `expected_modules`) is listed in
+`problems` and printed in red on the sheet under "CHECK BEFORE ISSUE". `result` is
+`built` or `built_with_problems`. Exit 3 only if the PDF export fails (the SVG is still
+written).
 
 ## schema
 ```bash

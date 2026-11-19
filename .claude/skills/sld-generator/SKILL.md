@@ -1,6 +1,6 @@
 ---
 name: sld-generator
-description: Generate a Malaysian Solar ATAP residential solar PV Single Line Diagram (SLD) as an A3 PDF, with sizing calculations and compliance checks. Use when the user asks to draw, generate, create, revise or check an SLD / single line diagram / schematic for a solar PV, GCPV or Solar ATAP job, or gives job details like panels, inverter, phase, customer name or TNB account. Also use when the user opens this repo and says hi, start, new job or asks what to do.
+description: Generate a Malaysian Solar ATAP residential solar PV Single Line Diagram (SLD) as an A3 PDF, with sizing calculations and compliance checks. Use when the user asks to draw, generate, create, revise or check an SLD / single line diagram / schematic for a solar PV, GCPV or Solar ATAP job, or gives job details like panels, inverter, phase, customer name or TNB account. Also use for a PE drawing / module layout plan (roof tile or metal deck) traced from a roof PV drawing. Also use when the user opens this repo and says hi, start, new job or asks what to do.
 ---
 
 # Solar ATAP SLD generator

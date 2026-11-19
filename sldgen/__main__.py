@@ -125,6 +125,46 @@ def cmd_build(args):
     return 1 if errors else 0
 
 
+def cmd_pe(args):
+    """PE drawing (module layout plan). Always writes the sheet; problems are labelled on it."""
+    from .pe import prepare_pe, render_pe
+    try:
+        raw = json.loads(Path(args.project).read_text(encoding="utf-8"))
+        read_error = None
+    except (OSError, json.JSONDecodeError) as e:
+        raw, read_error = {}, f"PE file could not be read: {e}"
+    pe = prepare_pe(raw)
+    if read_error:
+        pe["problems"].insert(0, read_error)
+    pr = pe["project"]
+    name = str(pr.get("drawing_no") or Path(args.project).stem)
+    rev = str(pr.get("revision", "") or "")
+    out = Path(args.out) if args.out else ROOT / "output" / name
+    out.mkdir(parents=True, exist_ok=True)
+    stem = f"{name}_PE_Rev{rev}" if rev else f"{name}_PE"
+    svg, info = render_pe(pe)
+    files = {"svg": out / f"{stem}.svg"}
+    files["svg"].write_text(svg, encoding="utf-8")
+    html = write_html(svg, out / f"{stem}.html")
+    export_error = None
+    try:
+        files["pdf"] = to_pdf(html, out / f"{stem}.pdf")
+        if not args.no_png:
+            files["png"] = to_png(html, out / f"{stem}_preview.png")
+    except Exception as e:  # browser missing or failed: the SVG is still there
+        export_error = f"PDF/PNG export failed: {e}. The SVG was written; run `sldgen doctor`."
+    result = "built_with_problems" if info["problems"] else "built"
+    payload = {"result": result, **info, "files": {k: str(v) for k, v in files.items()}}
+    if export_error:
+        payload["export_error"] = export_error
+    emit(args, payload,
+         [f"PE drawing: {info['modules']} modules, {info['kwp']:g} kWp, roof {info['roof_type']}"]
+         + [f"  PROBLEM  {m}" for m in info["problems"]]
+         + ([export_error] if export_error else [])
+         + [f"{k.upper():7} {v}" for k, v in files.items()])
+    return 3 if export_error else 0
+
+
 def cmd_init(args):
     path = Path(args.project)
     if path.exists() and not args.overwrite:
@@ -227,6 +267,12 @@ def main(argv=None):
     sp.add_argument("--force", action="store_true", help="build a watermarked draft even if checks fail")
     sp.add_argument("--no-png", action="store_true", help="skip the PNG preview")
     sp.set_defaults(func=cmd_build)
+
+    sp = common(sub.add_parser("pe", help="draw the PE module layout plan (tile or metal deck) from a PE file"))
+    sp.add_argument("project", help="PE file, e.g. projects/<name>-PE.json (see templates/pe.json)")
+    sp.add_argument("--out", help="output folder (default output/<drawing_no>)")
+    sp.add_argument("--no-png", action="store_true", help="skip the PNG preview")
+    sp.set_defaults(func=cmd_pe)
 
     sp = common(sub.add_parser("init", help="create a project file from the template"))
     sp.add_argument("project", help="path of the new project file, e.g. projects/ATAP-SLD-RES-003.json")
