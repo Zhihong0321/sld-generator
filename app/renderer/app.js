@@ -235,26 +235,35 @@ $('#refreshHist').addEventListener('click', loadHistory);
 async function loadSettings() {
   const s = await window.sld.getSettings();
   $('#sBase').value = s.baseUrl || ''; $('#sModel').value = s.model || ''; $('#sPython').value = s.python || '';
-  $('#sEapiBase').value = s.eapiBase || ''; $('#sEapiKey').value = ''; $('#sUploader').value = s.uploaderName || '';
-  $('#sEapiKey').placeholder = s.hasEapiKey ? `in use: ${s.eapiKey}` : 'not set: needed for the Invoices page';
-  $('#sKey').value = ''; $('#sKey').placeholder = s.hasKey ? `in use: ${s.apiKey}` : 'none';
+  $('#sEapiBase').value = s.eapiBase || ''; $('#sUploader').value = s.uploaderName || '';
+  $('#sEapiKey').value = s.savedEapiKey || ''; $('#sEapiKey').placeholder = 'paste the e-api key here: needed for the Invoices page';
+  $('#sKey').value = s.savedApiKey || ''; $('#sKey').placeholder = s.hasKey ? `using vault key ${s.apiKey}` : 'paste the AI API key here';
   $('#sKeySource').textContent = `Key source: ${s.keySource}`;
   $('#sPeBase').value = s.peBase || ''; $('#sPeModel').value = s.peModel || ''; $('#sPeEffort').value = s.peEffort || 'medium';
-  $('#sPeKey').value = ''; $('#sPeKey').placeholder = s.hasPeKey ? `in use: ${s.peKey}` : 'not set: needed for PE drawings';
+  $('#sPeKey').value = s.savedPeKey || ''; $('#sPeKey').placeholder = s.hasPeKey ? `using vault key ${s.peKey}` : 'paste the PE drawing AI key here';
   $('#sPeKeySource').textContent = `Key source: ${s.peKeySource}`;
 }
 $('#saveSettings').addEventListener('click', async () => {
   const patch = { baseUrl: $('#sBase').value, model: $('#sModel').value, python: $('#sPython').value };
-  if ($('#sKey').value.trim()) patch.apiKey = $('#sKey').value;
+  patch.apiKey = $('#sKey').value;
   patch.eapiBase = $('#sEapiBase').value;
   patch.uploaderName = $('#sUploader').value;
-  if ($('#sEapiKey').value.trim()) patch.eapiKey = $('#sEapiKey').value;
+  patch.eapiKey = $('#sEapiKey').value;
   patch.peBase = $('#sPeBase').value; patch.peModel = $('#sPeModel').value; patch.peEffort = $('#sPeEffort').value;
-  if ($('#sPeKey').value.trim()) patch.peKey = $('#sPeKey').value;
+  patch.peKey = $('#sPeKey').value;
   const r = await window.sld.saveSettings(patch);
-  $('#sStatus').textContent = r.ok ? 'Saved.' : 'Save failed: ' + r.error;
+  const s = r.ok ? await window.sld.getSettings() : null;
+  $('#sStatus').className = r.ok ? 'saved-ok' : 'issue error';
+  $('#sStatus').textContent = r.ok
+    ? `Saved ✓  Invoices key: ${s.hasEapiKey ? 'set' : 'NOT set'} · AI key: ${s.hasKey ? 'set' : 'not set'} · PE key: ${s.hasPeKey ? 'set' : 'not set'}`
+    : 'Save failed: ' + r.error;
   loadSettings(); loadLibrary();
 });
+$$('[data-show]').forEach((b) => b.addEventListener('click', () => {
+  const i = document.getElementById(b.dataset.show);
+  const hidden = i.type === 'password';
+  i.type = hidden ? 'text' : 'password'; b.textContent = hidden ? 'Hide' : 'Show';
+}));
 
 loadLibrary();
 
@@ -353,7 +362,11 @@ async function runInvoiceSearch() {
   const btn = $('#invGo'); btn.disabled = true; $('#invStatus').textContent = 'Searching…';
   try {
     const r = await window.sld.searchInvoices({ ...INV.args, offset: INV.offset });
-    if (!r.ok) { $('#invStatus').innerHTML = `<div class="issue error">Search failed: ${esc(r.error)}</div>`; return; }
+    if (!r.ok) {
+      $('#invStatus').innerHTML = `<div class="issue error">Search failed: ${esc(r.error)}${/key/i.test(r.error) ? ' <button class="secondary" id="goKey" style="margin-left:8px">Enter key</button>' : ''}</div>`;
+      $('#goKey')?.addEventListener('click', () => { show('settings'); setTimeout(() => { $('#sEapiKey').scrollIntoView({ block: 'center' }); $('#sEapiKey').focus(); }, 200); });
+      return;
+    }
     INV.rows = INV.rows.concat(r.rows || []);
     const head = INV.rows.length ? `${INV.rows.length} invoice(s)${r.agents?.length ? ' · agent: ' + r.agents.join(', ') : ''}` : 'No invoices found.';
     $('#invStatus').innerHTML = esc(head) + (r.notes || []).map((n) => `<div class="issue info" style="margin-top:6px">${esc(n)}</div>`).join('');

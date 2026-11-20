@@ -255,14 +255,20 @@ ipcMain.handle('read-text', async (_e, p) => {
 ipcMain.handle('settings:get', async () => {
   const s = getSettings();
   const mask = (k) => (k ? `${k.slice(0, 3)}…${k.slice(-2)}` : '');
+  const saved = readJson(settingsPath(), {});
   return { ...s, apiKey: mask(s.apiKey), hasKey: !!s.apiKey, eapiKey: mask(s.eapiKey), hasEapiKey: !!s.eapiKey,
-    peKey: mask(s.peKey), hasPeKey: !!s.peKey };
+    peKey: mask(s.peKey), hasPeKey: !!s.peKey,
+    // the keys saved in Settings (not the vault fallback), shown in their boxes
+    savedApiKey: s.apiKey || '', savedEapiKey: s.eapiKey || '', savedPeKey: s.peKey || '' };
 });
 ipcMain.handle('settings:save', async (_e, patch) => {
   const saved = readJson(settingsPath(), {});
   for (const k of ['python', 'baseUrl', 'model', 'apiKey', 'eapiBase', 'eapiKey', 'uploaderName', 'peBase', 'peModel', 'peEffort', 'peKey']) {
     if (patch && typeof patch[k] === 'string') {
-      if (patch[k].trim() === '') delete saved[k]; else saved[k] = patch[k].trim();
+      const v = patch[k].trim();
+      // An empty box never deletes a saved API key; keys are only ever replaced by a new value.
+      if (v === '' && /key$/i.test(k)) continue;
+      if (v === '') delete saved[k]; else saved[k] = v;
     }
   }
   try { fs.mkdirSync(path.dirname(settingsPath()), { recursive: true }); fs.writeFileSync(settingsPath(), JSON.stringify(saved, null, 2)); }

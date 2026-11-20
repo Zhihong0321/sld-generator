@@ -150,7 +150,7 @@
         <h2>AI (OpenAI-compatible API)</h2>
         <label class="field"><span class="lbl">Base URL</span><input id="sBase"></label>
         <label class="field"><span class="lbl">Model</span><input id="sModel"></label>
-        <label class="field"><span class="lbl">API key (leave blank to use the vault)</span><input id="sKey" type="password" placeholder=""></label>
+        <label class="field"><span class="lbl">API key</span><span class="keyrow"><input id="sKey" type="password" placeholder="" autocomplete="off"><button type="button" class="ghost" data-show="sKey">Show</button></span></label>
         <p class="muted" id="sKeySource"></p>
       </div>
       <div class="card">
@@ -168,7 +168,7 @@
       <div class="card">
         <h2>Invoices API (e-api)</h2>
         <label class="field" style="margin-top:10px"><span class="lbl">Base URL</span><input id="sEapiBase"></label>
-        <label class="field"><span class="lbl">API key</span><input id="sEapiKey" type="password"></label>
+        <label class="field"><span class="lbl">API key</span><span class="keyrow"><input id="sEapiKey" type="password" autocomplete="off"><button type="button" class="ghost" data-show="sEapiKey">Show</button></span></label>
         <label class="field"><span class="lbl">Your name (shown as "uploaded by")</span><input id="sUploader"></label>
       </div>
       <div class="card">
@@ -178,14 +178,14 @@
           <label class="field"><span class="lbl">Model</span><input id="sPeModel"></label>
           <label class="field"><span class="lbl">Reasoning effort</span><select id="sPeEffort"><option>low</option><option>medium</option><option>high</option></select></label>
         </div>
-        <label class="field"><span class="lbl">API key (leave blank to keep the current one)</span><input id="sPeKey" type="password"></label>
+        <label class="field"><span class="lbl">API key</span><span class="keyrow"><input id="sPeKey" type="password" autocomplete="off"><button type="button" class="ghost" data-show="sPeKey">Show</button></span></label>
         <p class="muted" id="sPeKeySource"></p>
       </div>
       <div class="card">
         <h2>Engine</h2>
         <label class="field"><span class="lbl">Python command</span><input id="sPython"></label>
       </div>
-      <div class="row"><button id="saveSettings" class="primary">Save</button><span id="sStatus" class="muted"></span></div>
+      <div class="row savebar"><button id="saveSettings" class="primary">Save</button><span id="sStatus"></span></div>
     </div>
   </section>
 </main>
