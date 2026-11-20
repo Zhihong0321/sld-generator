@@ -376,23 +376,59 @@ def section_aa(s, rt, cx, cy, r):
         s.add("</g>")
 
     clip_circle(s, "aa", cx, cy, r, body)
-    # whole-rafter view with the enlarged spot circled
-    x1, x2 = cx + r + 12, cx + r + 66
-    if rt == "tile":
-        y1, y2 = cy + 14, cy - 8
+    rafter_view(s, rt, cx, cy, r)
+
+
+def rafter_view(s, rt, cx, cy, r):
+    """Whole-rafter side view beside section A-A, drawn like the human sheets: module above the
+    rail, hooks along the rail, roof line(s) below, and the enlarged spot circled."""
+    tile = rt == "tile"
+    x0 = cx + r + 10
+    ang = -20 if tile else -3
+    L = 60 if tile else 56
+    y0 = cy + (19 if tile else 1)
+    ca, sa = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+
+    def g(u, v):   # local (along slope, across slope) -> sheet
+        return x0 + u * ca - v * sa, y0 + u * sa + v * ca
+
+    s.add(f'<g transform="translate({x0:.2f} {y0:.2f}) rotate({ang})">')
+    if tile:
+        s.line(0, 0, L, 0, "l")                                   # top chord truss
+        for u in (0, L):
+            s.line(u, -1.4, u, 1.4, "l")
+        s.line(0, -5.4, L, -5.4, "t")                             # tile line
+        s.line(0, -6.1, L, -6.1, "k")                             # aluminium rail
+        for u in (0, L):
+            s.line(u, -7.4, u, -4.8, "l")
+        hooks = [L * (i + 0.5) / 9 for i in range(9)]
+        for u in hooks:                                            # tile hooks across the rail
+            s.rect(u - 0.5, -6.9, 1.0, 1.6, "w")
+            s.line(u - 0.5, -6.9, u + 1.6, -6.9, "t")
+        s.rect(L * 0.07, -9.3, L * 0.81, 1.3, "w")                # PV modules
+        spot = hooks[1]
     else:
-        y1, y2 = cy - 2, cy - 7
-    s.line(x1, y1 + 1.2, x2, y2 + 1.2, "t")
-    s.line(x1, y1, x2, y2, "l")
-    s.line(x1 + 6, y1 - 2.4, x2 - 2, y2 - 2.4, "t")
-    for i in range(1, 6):
-        t = i / 6
-        s.rect(x1 + (x2 - x1) * t - 0.6, y1 + (y2 - y1) * t - 2.0, 1.2, 0.9, "t")
-    sx, sy = x1 + (x2 - x1) * 0.18, y1 + (y2 - y1) * 0.18 - 1
-    s.circle(sx, sy, 4.2, "t")
-    s.line(cx + r * math.cos(math.radians(-15)), cy + r * math.sin(math.radians(-15)), sx - 4, sy - 1, "t")
-    s.line(sx + (x2 - x1) * 0.45, sy + (y2 - y1) * 0.45 - 1, sx + (x2 - x1) * 0.45 + 2, sy + 6, "t")
-    s.text(sx + (x2 - x1) * 0.45 + 2, sy + 8, "SEE DETAIL 'A'", 1.3, bold=True)
+        s.line(0, 0, L, 0, "l")                                    # metal deck (double line)
+        s.line(2, 0.55, L - 6, 0.55, "l")
+        hooks = [L * 0.24, L * 0.73]
+        for u in hooks:                                            # klip-lok hooks
+            s.poly([(u - 0.7, -2.6), (u - 0.7, -1.4), (u + 0.1, -1.4)], "t", closed=False)
+            s.rect(u - 0.1, -1.6, 1.0, 1.6, "w")
+            s.circle(u + 0.4, -0.5, 0.25, "t")
+        s.rect(L * 0.11, -4.0, L * 0.86, 1.4, "w")                # PV modules
+        spot = hooks[0]
+    s.add("</g>")
+    sx, sy = g(spot, -4.5 if tile else -1.8)
+    sr = 6.0 if tile else 4.8
+    s.circle(sx, sy, sr, "t")
+    s.line(cx + r * math.cos(math.radians(-15)), cy + r * math.sin(math.radians(-15)),
+           sx - sr * 0.85, sy - sr * 0.5, "t")
+    if tile:   # arrow up to a hook, label below
+        hx, hy = g(hooks[6], -5.0)
+        s.line(hx, hy + 1.2, hx, hy + 10, "t")
+        s.add(f'<polygon points="{hx:.2f},{hy + 0.6:.2f} {hx - 0.6:.2f},{hy + 2.2:.2f} '
+              f'{hx + 0.6:.2f},{hy + 2.2:.2f}" fill="#000"/>')
+        s.text(hx, hy + 12.2, "SEE DETAIL 'A'", 1.3, "middle", True)
 
 
 def roof_profile(s, rt, cx, cy, r, y):
@@ -444,14 +480,38 @@ def section_bb(s, rt, cx1, cx2, cy, r):
     clip_circle(s, "bb2", cx2, cy, r, end)
 
 
-def rail_strip(s, x1, x2, y):
-    s.rect(x1, y, x2 - x1, 1.6, "w")
-    s.line(x1 - 2, y + 2.4, x2 + 2, y + 2.4, "l")
-    s.line(x1 - 2, y + 3.0, x2 + 2, y + 3.0, "t")
-    n = 9
-    for i in range(n):
-        x = x1 + 3 + i * (x2 - x1 - 6) / (n - 1)
-        s.line(x, y - 0.6, x, y, "t")
+def rail_strip(s, rt, x1, x2, y):
+    """Section B-B: the long view of one rail row, like the human sheets: modules with clamps on
+    top, the rail, hooks under the rail, roof (tile scallops or metal-deck ribs) on a base strip."""
+    w = x2 - x1
+    mx1, mx2 = x1 + 1.5, x2 - 1.5
+    s.rect(mx1, y, mx2 - mx1, 0.7, "w")                            # PV modules
+    n_mod = 5
+    for i in range(1, n_mod):                                      # mid clamps at module joints
+        jx = mx1 + i * (mx2 - mx1) / n_mod
+        s.line(jx, y, jx, y + 0.7, "t")
+        s.path(f"M{jx - 0.5:.2f},{y - 0.35:.2f} L{jx:.2f},{y + 0.15:.2f} L{jx + 0.5:.2f},{y - 0.35:.2f}", "t")
+    for ex, d in ((mx1, 1), (mx2, -1)):                            # end clamps
+        s.poly([(ex, y + 0.7), (ex, y - 0.35), (ex + d * 0.5, y - 0.35)], "t", closed=False)
+    s.rect(x1, y + 0.9, w, 1.0, "w")                               # aluminium rail
+    base = y + 3.6
+    hooks = [x1 + 3 + i * (w - 6) / 4 for i in range(5)]
+    for hx in hooks:                                               # tile / klip-lok hooks
+        s.rect(hx - 0.45, y + 1.9, 0.9, base - y - 1.9, "w")
+        s.line(hx, y + 2.3, hx, base - 0.4, "t")
+    if rt == "tile":
+        d = f"M{x1 - 1.5:.2f},{base:.2f}"
+        n = int((w + 3) / 2.2)
+        step = (w + 3) / n
+        for _ in range(n):                                         # roof tile scallops
+            d += f" q{step / 2:.2f},-1.1 {step:.2f},0"
+        s.path(d, "t")
+    else:
+        bx = x1
+        while bx <= x2:                                            # metal deck ribs
+            s.path(f"M{bx - 0.35:.2f},{base:.2f} v-0.5 q0.35,-0.5 0.7,0 v0.5", "t")
+            bx += 3.2
+    s.rect(x1 - 1.5, base, w + 3, 1.7, "l")                        # roof base strip
 
 
 def legend(s, rt, x, y):
@@ -622,7 +682,7 @@ def render_pe(pe):
     for name, fn in (("detail", lambda: (detail_tile_hook if rt == "tile" else detail_kliplok)(s, 258, 15)),
                      ("section A-A", lambda: section_aa(s, rt, 238, 92, 31)),
                      ("section B-B", lambda: section_bb(s, rt, 238, 309, 168, 29)),
-                     ("rail strip", lambda: rail_strip(s, 234, 314, 222)),
+                     ("rail strip", lambda: rail_strip(s, rt, 234, 314, 222)),
                      ("legend", lambda: legend(s, rt, 296, 248))):
         try:
             fn()
