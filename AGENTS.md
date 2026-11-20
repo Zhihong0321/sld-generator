@@ -84,6 +84,10 @@ sldgen doctor           # confirms Python version, browser for PDF export, libra
 If `doctor` reports no browser, ask the user to install Microsoft Edge or Google Chrome,
 or to set `SLD_BROWSER` to a Chromium executable.
 
+No shell? Use the MCP server (`sldgen mcp`, see `docs/TOOLS.md#mcp`). Its `check_project` and
+`build_project` tools take the project as an inline JSON object and return the same JSON as
+`check`/`build --json`. Every rule here still applies.
+
 ## Workflow
 
 ### Step 1 - Intake
