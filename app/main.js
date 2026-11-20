@@ -10,6 +10,7 @@ const { spawn } = require('child_process');
 const { Updater, REPO_URL } = require('./updater');
 const { InvoiceApi } = require('./invoices');
 const pe = require('./pe');
+const { SettingsStore } = require('./settings-store');
 
 const ROOT = path.resolve(__dirname, '..');            // repo root (holds sldgen/, library/, projects/, output/)
 const PROJECTS = path.join(ROOT, 'projects');
@@ -21,7 +22,6 @@ const DEFAULT_MODELS = ['deepseek-v4.1-flash', 'deepseek-v4-flash-0731'];
 const PE_VAULT_ENTRY = 'LINGSUAN_API_KEY';   // optional fallback for the PE drawing AI key
 
 // ---------- settings ----------
-function settingsPath() { return path.join(app.getPath('userData'), 'settings.json'); }
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -41,25 +41,21 @@ function vaultLlm(name = VAULT_ENTRY) {
   return e ? { baseUrl: String(e.baseUrl || ''), apiKey: String(e.secret || '') } : { baseUrl: '', apiKey: '' };
 }
 
+// One store, loaded once at start (see settings-store.js). The app uses only what is stored.
+let store = null;
+function getStore() {
+  if (!store) {
+    store = new SettingsStore(app.getPath('userData'));
+    // First run on a PC with the vault: fill keys that were never set, once. After that,
+    // only what the user types counts.
+    store.seed({ apiKey: vaultLlm().apiKey, peKey: vaultLlm(PE_VAULT_ENTRY).apiKey });
+  }
+  return store;
+}
+
 function getSettings() {
-  const saved = readJson(settingsPath(), {});
-  const vault = vaultLlm();
-  const peVault = vaultLlm(PE_VAULT_ENTRY);
-  return {
-    python: saved.python || 'python',
-    baseUrl: saved.baseUrl || vault.baseUrl || 'https://vectide.cn/v1',
-    model: saved.model || DEFAULT_MODELS[0],
-    apiKey: saved.apiKey || vault.apiKey,
-    keySource: saved.apiKey ? 'settings' : (vault.apiKey ? `vault (${VAULT_ENTRY})` : 'none'),
-    eapiBase: saved.eapiBase || 'https://e-api.up.railway.app',
-    eapiKey: saved.eapiKey || '',
-    uploaderName: saved.uploaderName || require('os').userInfo().username || 'SLD Studio',
-    peBase: saved.peBase || 'https://api.lingsuan.si/v1',
-    peModel: saved.peModel || 'gpt-6.1-terra',
-    peEffort: saved.peEffort || 'medium',
-    peKey: saved.peKey || peVault.apiKey,
-    peKeySource: saved.peKey ? 'settings' : (peVault.apiKey ? `vault (${PE_VAULT_ENTRY})` : 'none'),
-  };
+  const s = getStore().get();
+  return { ...s, uploaderName: s.uploaderName || require('os').userInfo().username || 'SLD Studio' };
 }
 
 // ---------- python engine ----------
@@ -252,29 +248,8 @@ ipcMain.handle('read-text', async (_e, p) => {
   try { return { ok: true, text: fs.readFileSync(p, 'utf8') }; } catch (e) { return { ok: false, error: e.message, text: '' }; }
 });
 
-ipcMain.handle('settings:get', async () => {
-  const s = getSettings();
-  const mask = (k) => (k ? `${k.slice(0, 3)}…${k.slice(-2)}` : '');
-  const saved = readJson(settingsPath(), {});
-  return { ...s, apiKey: mask(s.apiKey), hasKey: !!s.apiKey, eapiKey: mask(s.eapiKey), hasEapiKey: !!s.eapiKey,
-    peKey: mask(s.peKey), hasPeKey: !!s.peKey,
-    // the keys saved in Settings (not the vault fallback), shown in their boxes
-    savedApiKey: s.apiKey || '', savedEapiKey: s.eapiKey || '', savedPeKey: s.peKey || '' };
-});
-ipcMain.handle('settings:save', async (_e, patch) => {
-  const saved = readJson(settingsPath(), {});
-  for (const k of ['python', 'baseUrl', 'model', 'apiKey', 'eapiBase', 'eapiKey', 'uploaderName', 'peBase', 'peModel', 'peEffort', 'peKey']) {
-    if (patch && typeof patch[k] === 'string') {
-      const v = patch[k].trim();
-      // An empty box never deletes a saved API key; keys are only ever replaced by a new value.
-      if (v === '' && /key$/i.test(k)) continue;
-      if (v === '') delete saved[k]; else saved[k] = v;
-    }
-  }
-  try { fs.mkdirSync(path.dirname(settingsPath()), { recursive: true }); fs.writeFileSync(settingsPath(), JSON.stringify(saved, null, 2)); }
-  catch (e) { return { ok: false, error: e.message }; }
-  return { ok: true };
-});
+ipcMain.handle('settings:get', async () => ({ ...getSettings(), file: getStore().file, problem: getStore().problem }));
+ipcMain.handle('settings:save', async (_e, patch) => getStore().set(patch || {}));
 
 // ---------- invoices (e-api) ----------
 const invoices = new InvoiceApi(() => { const s = getSettings(); return { base: s.eapiBase, key: s.eapiKey }; });
@@ -413,7 +388,7 @@ function extractJson(text) {
 
 ipcMain.handle('llm:parse', async (_e, text) => {
   const s = getSettings();
-  if (!s.apiKey) return { ok: false, error: 'No API key: add one in Settings or the vault entry ' + VAULT_ENTRY };
+  if (!s.apiKey) return { ok: false, error: 'No AI API key: type it in Settings → AI → API key.' };
   const lib = (await runSldgen(['library', '--json'])).data || {};
   const models = [s.model, ...DEFAULT_MODELS.filter((m) => m !== s.model)];
   const errors = [];
@@ -585,5 +560,13 @@ function createWindow() {
 setInterval(checkForUpdate, UPDATE_EVERY_MS);
 
 if (process.platform === 'win32') app.setAppUserModelId('com.eternalgy.sldstudio');
-app.whenReady().then(createWindow);
+// Only one SLD Studio window at a time, so two windows never write the settings at once.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWin && !mainWin.isDestroyed()) { if (mainWin.isMinimized()) mainWin.restore(); mainWin.focus(); }
+  });
+  app.whenReady().then(() => { getStore(); createWindow(); });
+}
 app.on('window-all-closed', () => app.quit());

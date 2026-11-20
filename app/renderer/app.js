@@ -232,38 +232,47 @@ $('#histSearch').addEventListener('input', drawHistory);
 $('#refreshHist').addEventListener('click', loadHistory);
 
 // ---------- settings ----------
+// The boxes show exactly what is stored. Typing stores it (no Save needed); Save stores all.
+const SETTING_FIELDS = {
+  sBase: 'baseUrl', sModel: 'model', sKey: 'apiKey', sEapiBase: 'eapiBase', sEapiKey: 'eapiKey',
+  sUploader: 'uploaderName', sPeBase: 'peBase', sPeModel: 'peModel', sPeEffort: 'peEffort', sPeKey: 'peKey', sPython: 'python',
+};
+let settingsFilled = false;
+
 async function loadSettings() {
+  if (settingsFilled) return;               // fill once; after that the boxes are what you typed
   const s = await window.sld.getSettings();
-  $('#sBase').value = s.baseUrl || ''; $('#sModel').value = s.model || ''; $('#sPython').value = s.python || '';
-  $('#sEapiBase').value = s.eapiBase || ''; $('#sUploader').value = s.uploaderName || '';
-  $('#sEapiKey').value = s.savedEapiKey || ''; $('#sEapiKey').placeholder = 'paste the e-api key here: needed for the Invoices page';
-  $('#sKey').value = s.savedApiKey || ''; $('#sKey').placeholder = s.hasKey ? `using vault key ${s.apiKey}` : 'paste the AI API key here';
-  $('#sKeySource').textContent = `Key source: ${s.keySource}`;
-  $('#sPeBase').value = s.peBase || ''; $('#sPeModel').value = s.peModel || ''; $('#sPeEffort').value = s.peEffort || 'medium';
-  $('#sPeKey').value = s.savedPeKey || ''; $('#sPeKey').placeholder = s.hasPeKey ? `using vault key ${s.peKey}` : 'paste the PE drawing AI key here';
-  $('#sPeKeySource').textContent = `Key source: ${s.peKeySource}`;
+  for (const [id, k] of Object.entries(SETTING_FIELDS)) {
+    const el = document.getElementById(id);
+    if (el) el.value = s[k] ?? '';
+  }
+  settingsFilled = true;
+  $('#sFile').textContent = `Stored in ${s.file}`;
+  if (s.problem) { $('#sStatus').className = 'issue warning'; $('#sStatus').textContent = s.problem; }
 }
-$('#saveSettings').addEventListener('click', async () => {
-  const patch = { baseUrl: $('#sBase').value, model: $('#sModel').value, python: $('#sPython').value };
-  patch.apiKey = $('#sKey').value;
-  patch.eapiBase = $('#sEapiBase').value;
-  patch.uploaderName = $('#sUploader').value;
-  patch.eapiKey = $('#sEapiKey').value;
-  patch.peBase = $('#sPeBase').value; patch.peModel = $('#sPeModel').value; patch.peEffort = $('#sPeEffort').value;
-  patch.peKey = $('#sPeKey').value;
-  const r = await window.sld.saveSettings(patch);
-  const s = r.ok ? await window.sld.getSettings() : null;
+
+async function saveSettingsNow() {
+  if (!settingsFilled) await loadSettings();
+  const patch = {};
+  for (const [id, k] of Object.entries(SETTING_FIELDS)) {
+    const el = document.getElementById(id);
+    if (el) patch[k] = el.value;
+  }
+  let r;
+  try { r = await window.sld.saveSettings(patch); } catch (e) { r = { ok: false, error: e.message }; }
   $('#sStatus').className = r.ok ? 'saved-ok' : 'issue error';
-  $('#sStatus').textContent = r.ok
-    ? `Saved ✓  Invoices key: ${s.hasEapiKey ? 'set' : 'NOT set'} · AI key: ${s.hasKey ? 'set' : 'not set'} · PE key: ${s.hasPeKey ? 'set' : 'not set'}`
-    : 'Save failed: ' + r.error;
-  loadSettings(); loadLibrary();
-});
-$$('[data-show]').forEach((b) => b.addEventListener('click', () => {
-  const i = document.getElementById(b.dataset.show);
-  const hidden = i.type === 'password';
-  i.type = hidden ? 'text' : 'password'; b.textContent = hidden ? 'Hide' : 'Show';
-}));
+  $('#sStatus').textContent = r.ok ? `Saved ✓ ${new Date().toLocaleTimeString()}` : r.error;
+  return r;
+}
+
+let saveTimer = null;
+for (const id of Object.keys(SETTING_FIELDS)) {
+  const el = document.getElementById(id);
+  if (!el) continue;
+  el.addEventListener('input', () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveSettingsNow, 500); });
+  el.addEventListener('change', () => { clearTimeout(saveTimer); saveSettingsNow(); });
+}
+$('#saveSettings').addEventListener('click', async () => { clearTimeout(saveTimer); await saveSettingsNow(); loadLibrary(); });
 
 loadLibrary();
 
