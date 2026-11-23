@@ -156,32 +156,12 @@ def design(p):
     dc_cable = {"size_mm2": dc_size, "length_m": dc_len, "iz_a": dc_iz, "vd_pct": vd_dc,
                 "spec": f"1C x {dc_size:g} mm² PV1-F XLPO Cu 1.5 kV DC (EN 50618)"}
 
-    # --- DC isolator & SPD ----------------------------------------------------------------
-    voc_max = max(g["voc_max"] for g in mppts)
-    voc_stc = max(g["voc_stc"] for g in mppts)
-    isc_mppt = max(g["isc_total"] for g in mppts)
-    iso_a = next_size(R.DC_CURRENT_FACTOR * isc_mppt, R.DC_ISOLATOR_SIZES_A)
-    iso_v = next_size(voc_max, R.DC_ISOLATOR_VOLTAGES_V)
-    if iso_a is None or iso_v is None:
-        issues.error("dc.isolator", "No standard DC isolator rating covers this array")
-    dc_isolator = {"current_a": iso_a, "voltage_v": iso_v, "poles": 2 * len(mppts),
-                   "utilisation": R.DC_ISOLATOR_UTILISATION}
-    ucpv = next_size(max(R.DC_SPD_VOLTAGE_FACTOR * voc_stc, voc_max), R.DC_SPD_UCPV_V)
-    if ucpv is None:
-        issues.error("dc.spd", "No standard DC SPD Ucpv covers this array voltage")
-    dc_spd = {"ucpv_v": ucpv, "in_ka": R.SPD_IN_KA, "imax_ka": R.SPD_IMAX_KA}
-
     # --- AC side (§3.2) ----------------------------------------------------------------
     p_ac_w = p_ac_kw * 1000
     i_calc = p_ac_w / R.V_PHASE if phase == 1 else p_ac_w / (math.sqrt(3) * R.V_LINE)
     i_ac = max(inv.get("max_ac_current_a") or 0, i_calc)
     mcb_min = R.AC_BREAKER_FACTOR * i_ac
     mcb = _override(p, "ac_mcb_a", next_size(mcb_min, R.MCB_SIZES_A), issues, "Solar AC MCB", mcb_min)
-    rcd = _override(p, "ac_rcd_a", next_size(mcb, R.RCD_SIZES_A), issues, "Solar AC RCD", mcb)
-    rcd_ma = p["overrides"].get("ac_rcd_ma", R.AC_RCD_SENSITIVITY_MA[phase])
-    rcd_type = inv.get("rcd_type", R.AC_RCD_TYPE)
-    iso_ac = _override(p, "ac_isolator_a", next_size(max(mcb_min, mcb), R.AC_ISOLATOR_SIZES_A),
-                       issues, "AC isolator", mcb)
     ac_len = p["cables"]["ac_length_m"]
 
     def ac_vd(a):
@@ -214,10 +194,6 @@ def design(p):
     ac = {
         "p_ac_kw": p_ac_kw, "i_calc": i_calc, "i_ac": i_ac, "mcb_min": mcb_min,
         "mcb": {"a": mcb, "poles": "DP" if phase == 1 else "TP", "curve": "C", "ka": R.MCB_BREAKING_KA},
-        "rcd": {"a": rcd, "ma": rcd_ma, "type": rcd_type, "poles": poles_ac},
-        "isolator": {"a": iso_ac, "poles": poles_ac, "utilisation": R.AC_ISOLATOR_UTILISATION},
-        "spd": {"uc_v": R.AC_SPD_UC_V[phase], "in_ka": R.SPD_IN_KA, "imax_ka": R.SPD_IMAX_KA,
-                "poles": poles_ac, "backup_a": R.SPD_BACKUP_MCB_A},
         "cable": ac_cable,
     }
 
@@ -253,9 +229,9 @@ def design(p):
         "t_min": t_min, "t_max": t_max,
         "module": mod, "inverter": inv, "strings": strings, "mppts": mppts,
         "array": {"n_modules": n_modules, "p_dc_kwp": p_dc_kwp, "dc_ac_ratio": ratio},
-        "dc_cable": dc_cable, "dc_isolator": dc_isolator, "dc_spd": dc_spd,
+        "dc_cable": dc_cable,
         "ac": ac, "vd_total_pct": vd_total, "mdb": mdb, "tnb": tnb,
-        "earth": {"bond_mm2": R.MODULE_BONDING_MM2, "pe_mm2": max(pe, R.EARTH_CONDUCTOR_MIN_MM2),
+        "earth": {"bond_mm2": R.MODULE_BONDING_MM2, "pe_mm2": R.EARTH_CABLE_MM2,
                   "rod": R.EARTH_ROD, "r_max": R.EARTH_RESISTANCE_MAX_OHM},
         "issues": issues, "unverified": unverified,
     }

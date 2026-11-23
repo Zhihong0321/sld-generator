@@ -64,6 +64,7 @@ AC_CABLE_AMPACITY_A = {
     3: {1.5: 15.5, 2.5: 21, 4: 28, 6: 36, 10: 50, 16: 68, 25: 89},    # 3 loaded conductors
 }
 EARTH_CONDUCTOR_MIN_MM2 = 6
+EARTH_CABLE_MM2 = 10             # protective earth cable shown on the SLD
 MODULE_BONDING_MM2 = 6
 
 # --- Earthing (§6) -----------------------------------------------------------------

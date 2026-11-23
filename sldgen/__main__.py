@@ -38,12 +38,8 @@ def summary(d):
         "strings": [{"mppt": g["mppt"], "series": g["n_series"], "parallel": g["n_parallel"],
                      "voc_max_v": round(g["voc_max"], 1), "isc_a": round(g["isc_total"], 2)} for g in d["mppts"]],
         "dc_cable_mm2": d["dc_cable"]["size_mm2"], "vd_dc_pct": round(d["dc_cable"]["vd_pct"], 3),
-        "dc_isolator": f"{d['dc_isolator']['poles']}P {d['dc_isolator']['voltage_v']} V DC {d['dc_isolator']['current_a']} A",
-        "dc_spd_ucpv_v": d["dc_spd"]["ucpv_v"],
         "string_fuse_a": max((g["fuse_a"] or 0) for g in d["mppts"]) or None,
         "i_ac_a": round(ac["i_ac"], 2), "ac_mcb": f"{ac['mcb']['a']} A {ac['mcb']['poles']} C {ac['mcb']['ka']} kA",
-        "ac_rcd": f"{ac['rcd']['a']} A {ac['rcd']['poles']}P {ac['rcd']['ma']} mA {ac['rcd']['type']}",
-        "ac_isolator": f"{ac['isolator']['a']} A {ac['isolator']['poles']}P",
         "ac_cable": ac["cable"]["spec"], "vd_ac_pct": round(ac["cable"]["vd_pct"], 3),
         "vd_total_pct": round(d["vd_total_pct"], 3), "unverified_equipment": d["unverified"],
     }
@@ -54,9 +50,9 @@ def text_summary(d):
     lines = [f"Array {s['p_dc_kwp']:.2f} kWp / inverter {s['p_ac_kw']:.2f} kWac / {s['supply']} "
              f"(DC/AC {s['dc_ac_ratio']:.2f})",
              "Strings: " + ", ".join(f"MPPT{g['mppt']} {g['parallel']}x{g['series']}" for g in s["strings"]),
-             f"DC: cable {s['dc_cable_mm2']:g} mm² (dV {s['vd_dc_pct']:.2f}%), isolator {s['dc_isolator']}, "
-             f"SPD Ucpv {s['dc_spd_ucpv_v']} V" + (f", string fuses {s['string_fuse_a']} A" if s["string_fuse_a"] else ""),
-             f"AC: Iac {s['i_ac_a']:.2f} A -> MCB {s['ac_mcb']}, RCD {s['ac_rcd']}, isolator {s['ac_isolator']}",
+             f"DC: cable {s['dc_cable_mm2']:g} mm² (dV {s['vd_dc_pct']:.2f}%)"
+             + (f", string fuses {s['string_fuse_a']} A" if s["string_fuse_a"] else ""),
+             f"AC: Iac {s['i_ac_a']:.2f} A -> MCB {s['ac_mcb']}",
              f"    cable {s['ac_cable']} (dV {s['vd_ac_pct']:.2f}%)",
              f"Total voltage drop {s['vd_total_pct']:.2f}%"]
     lines += [f"  {i['level'].upper():8} [{i['code']}] {i['msg']}" for i in d["issues"]]

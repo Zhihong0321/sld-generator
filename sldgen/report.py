@@ -27,6 +27,6 @@ def design_report(d, p):
         out.append(f"| {g['mppt']} | {', '.join(g['strings'])} | {g['n_series']} x {g['n_parallel']} | "
                    f"{g['voc_stc']:.1f} V | {g['voc_max']:.1f} V | {g['vmp_stc']:.1f} V | {g['vmp_min']:.1f} V | "
                    f"{g['isc_total']:.2f} A | {g['fuse_a'] or '-'} |")
-    out += ["", "## Equipment schedule", "", "| Tag | Item | Specification | Sizing basis |", "|---|---|---|---|"]
-    out += [f"| {t} | {n} | {s} | {b} |" for t, n, s, b in schedule_rows(d, p)]
+    out += ["", "## Equipment schedule", "", "| Tag | Description |", "|---|---|"]
+    out += [f"| {t} | {n} |" for t, n in schedule_rows(d, p)]
     return "\n".join(out) + "\n"

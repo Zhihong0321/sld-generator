@@ -233,7 +233,8 @@ def draw_diagram(sh, d, p):
     sh.rect(arr_l, 26.5, arr_r - arr_l, 37, "box")
     sh.text(arr_l, 25.4, "PV ARRAY", 2.0, bold=True)
     strings = {s["id"]: s for s in d["strings"]}
-    y_cb = 82.0
+    y_join = 100.0
+    fuse_of = {g["mppt"]: g["fuse_a"] for g in d["mppts"]}
     for sid, cx in xs.items():
         s = strings[sid]
         sh.lines(cx, 29.6, [f"{sid} · MPPT {s['mppt']}", f"{s['modules']} × {f(mod['wattage_wp'])} Wp"],
@@ -248,7 +249,15 @@ def draw_diagram(sh, d, p):
         if s["modules"] >= 3:
             for k in range(3):
                 sh.dot(cx + 3.2, 50.3 + k * 1.3)
-        sh.line(cx, ys[-1] + 2.5, cx, y_cb)
+        fa = fuse_of.get(s["mppt"])
+        if fa:
+            # String fuse in line (only where >= 3 strings are paralleled); no combiner box.
+            sh.line(cx, ys[-1] + 2.5, cx, 85)
+            fuse(sh, cx, 88, 90, 3)
+            sh.text(cx + 1.6, 88.6, f"{fa}A", 1.3)
+            sh.line(cx, 91, cx, y_join)
+        else:
+            sh.line(cx, ys[-1] + 2.5, cx, y_join)
         ticks(sh, cx, 71, 2, vertical=True)
         sh.text(cx + 1.6, 69.4, "+/-", 1.4)
     # Module frame bonding to the earth riser at x=16.
@@ -280,54 +289,18 @@ def draw_diagram(sh, d, p):
         f"{f(dc['length_m'])} m one-way,  ΔV = {dc['vd_pct']:.2f} % (≤ {f(R.VD_DC_MAX_PCT)} %)",
     ], 1.7, bold_first=True)
 
-    # DC combiner / isolator box -------------------------------------------------------
-    cb_l, cb_r, cb_b = arr_l, arr_r, 118.0
-    sh.rect(cb_l, y_cb, cb_r - cb_l, cb_b - y_cb, "box")
-    sh.text(cb_l + 1, y_cb + 2.6, "DCB", 1.5, bold=True)
-    y_iso, y_tap, y_bar = 99.0, 106.0, 115.5
+    # Strings wired straight to the inverter DC inputs (no DC combiner box) -------------
     fuses = any(g["fuse_a"] for g in d["mppts"])
     for g in d["mppts"]:
-        m, cxs = g["mppt"], [xs[s] for s in g["strings"]]
-        top = y_cb
-        for cx in cxs:
-            if g["fuse_a"]:
-                fuse(sh, cx, 87, 90, 3)
-                sh.text(cx + 1.6, 87.6, f"{g['fuse_a']}A", 1.3)
-                sh.line(cx, 90, cx, 92)
-            else:
-                sh.line(cx, top, cx, 92)
+        cxs = [xs[s] for s in g["strings"]]
         if len(cxs) > 1:
-            sh.line(min(cxs), 92, max(cxs), 92)
+            sh.line(min(cxs), y_join, max(cxs), y_join)
             for cx in cxs:
-                sh.dot(cx, 92)
-        c = gx[m]
-        sh.line(c, 92, c, y_iso - 5)
-        switch(sh, c, y_iso, 90, "isolator")
-        sh.text(c + 2.4, y_iso + 5.3, f"DCI-{m}" if len(d["mppts"]) > 1 else "DCI", 1.3)
-        sh.line(c, y_iso + 5, c, cb_b)
-        sh.dot(c, y_tap)
-        sh.line(c, y_tap, c - 5, y_tap)
-        spd(sh, c - 5, y_tap + 4.5, 90, 4.5)
-        sh.text(c - 7.2, y_tap + 4.0, "SPD", 1.2, "end")
-        sh.line(c - 5, y_tap + 9, c - 5, y_bar, "es")
-    if len(d["mppts"]) > 1:
-        sh.line(gx[d["mppts"][0]["mppt"]] + 1.7, y_iso - 0.4, gx[d["mppts"][-1]["mppt"]] + 1.7, y_iso - 0.4, "mech")
-    right_spd = max(gx.values()) - 5
-    sh.line(cb_l, y_bar, right_spd, y_bar, "es")
-    sh.line(16, y_bar, cb_l, y_bar, "en")
-    sh.dot(16, y_bar, "efill")
-
-    iso, dspd = d["dc_isolator"], d["dc_spd"]
+                sh.dot(cx, y_join)
     fuse_txt = (f"STRING FUSES: gPV {max(g['fuse_a'] or 0 for g in d['mppts'])} A 1000 V DC in +/- of each string"
                 if fuses else f"STRING FUSES: not required (< {R.STRING_FUSE_MIN_PARALLEL} parallel strings per MPPT)")
-    sh.lines(cb_r + 6, 87, [
-        "DC COMBINER / ISOLATOR BOX (DCB) - IP65 OUTDOOR",
-        f"DCI: {iso['poles']}-POLE DC ISOLATOR {iso['voltage_v']} V DC {iso['current_a']} A, {iso['utilisation']}, "
-        f"IP65, LOCKABLE IN OFF",
-        '      Label: "DC ISOLATOR - LOCKABLE"',
-        f"SPD: TYPE II DC SPD, Ucpv {dspd['ucpv_v']} V, In {dspd['in_ka']} kA, Imax {dspd['imax_ka']} kA "
-        f"(MS IEC 61643-12), one per MPPT",
-        "      bonded to earth bar by shortest path (< 0.5 m)",
+    sh.lines(arr_r + 6, 100, [
+        "DC SWITCH & DC SPD: BUILT INTO INVERTER (NO DC COMBINER BOX)",
         fuse_txt,
     ], 1.75, bold_first=True)
 
@@ -337,8 +310,8 @@ def draw_diagram(sh, d, p):
     for k, g in enumerate(d["mppts"]):
         c = gx[g["mppt"]]
         xin = inv_x + inv_w * (k + 1) / (n_m + 1)
-        yb = 119.4 + k * 1.5
-        sh.poly([(c, cb_b), (c, yb), (xin, yb), (xin, inv_y)])
+        yb = 113.0 + k * 1.5
+        sh.poly([(c, y_join), (c, yb), (xin, yb), (xin, inv_y)])
         sh.text(xin, inv_y + 2.4, f"M{g['mppt']}", 1.3, "middle")
     sh.rect(inv_x, inv_y, inv_w, inv_h, "hv")
     sh.line(inv_x, inv_y + inv_h, inv_x + inv_w, inv_y, "th")
@@ -356,90 +329,51 @@ def draw_diagram(sh, d, p):
     compliance = inv.get("compliance", "MS IEC 62109-1/-2, IEEE 1547")
     if "island" not in compliance.lower():
         compliance += "; built-in anti-islanding"
-    rows += wrap(compliance + ("; integrated DC switch" if inv.get("integrated_dc_switch") else ""), 60, 1.7)
+    rows += wrap(compliance + "; integrated DC switch, DC SPD and AC SPD", 60, 1.7)
     sh.lines(18, 158.5, rows, 1.7, bold_first=True)
 
     # AC chain ------------------------------------------------------------------------------
     y = y_main
     x0 = inv_x + inv_w
-    aci = ac["isolator"]
-    sh.line(x0, y, 59, y)
-    ticks(sh, 54, y, n_ac)
-    switch(sh, 64, y, 0, "isolator")
-    padlock(sh, 67.6, y - 7.2)
-    sh.lines(64, 127.8, ["ACI", f"{aci['a']}A {aci['poles']}P", aci["utilisation"]], 1.5, "middle", bold_first=True)
     cab = ac["cable"]
-    sh.line(69, y, 96, y)
-    ticks(sh, 82, y, n_ac)
-    sh.lines(71, y + 4.5, ["C2 - AC CABLE",
+    sh.line(x0, y, 96, y)
+    ticks(sh, 86, y, n_ac)
+    sh.lines(55, y + 4.5, ["C2 - AC CABLE",
                            *wrap(cab["spec"], 23, 1.45),
                            f"{f(cab['length_m'])} m, ΔV {cab['vd_pct']:.2f} %"], 1.45, bold_first=True)
 
-    # Solar ACDB
-    bx, bw, by, bh = 96.0, 50.0, 122.0, 44.0
+    # Solar ACDB: MCB + PV meter (AC SPD is built into the inverter; no RCD, no AC isolator)
+    bx, bw, by, bh = 96.0, 50.0, 122.0, 34.0
     sh.rect(bx, by, bw, bh, "box")
     sh.text(bx + 1.2, by + 3, "SOLAR ACDB (IP65)", 1.8, bold=True)
-    mcb, rcd, aspd = ac["mcb"], ac["rcd"], ac["spd"]
+    mcb = ac["mcb"]
     switch(sh, 106, y, 0, "breaker")
     sh.lines(106, 129.5, ["MCB-S", f"{mcb['a']}A {mcb['poles']}", f"C {mcb['ka']}kA"], 1.45, "middle",
              bold_first=True)
-    sh.line(111, y, 116, y)
-    switch(sh, 123, y, 0, "rcd", h=7)
-    sh.lines(124, 129.5, ["RCD-S", f"{rcd['a']}A {rcd['poles']}P {rcd['ma']}mA", rcd["type"].upper()], 1.45,
-             "middle", bold_first=True)
-    sh.line(130, y, bx + bw, y)
-    sh.dot(139, y)
-    switch(sh, 139, y + 6.5, 90, "breaker", h=4.5, k=0.7)
-    spd(sh, 139, y + 15, 90, 4)
-    sh.lines(136.5, y + 6, [f"{aspd['backup_a']}A"], 1.35, "end")
-    sh.lines(136.5, y + 13.2, ["AC SPD", "TYPE II", f"{aspd['poles']}P Uc {aspd['uc_v']}V", f"In {aspd['in_ka']}kA"],
-             1.35, "end")
-    sh.line(139, y + 19, 139, 178, "en")
+    sh.line(111, y, 122, y)
+    sh.rect(122, y - 4.5, 12, 9, "hv")
+    sh.text(128, y + 0.4, "kWh", 2.4, "middle", True)
+    sh.text(128, y + 3.3, "PV", 1.2, "middle")
+    sh.lines(128, 129.5, ["PV METER", "(GENERATION)"], 1.45, "middle", bold_first=True)
+    sh.line(134, y, bx + bw, y)
     sh.lines(bx + 1.2, y + 6, ["WARNING:", "DUAL SUPPLY - ISOLATE", "BOTH BEFORE SERVICING"], 1.45, cls="red")
 
-    # Consumer MDB
-    mx, mw, my, mh = 158.0, 60.0, 122.0, 50.0
-    sh.line(bx + bw, y, 163, y)
+    # Client / consumer DB: a single block (internal detail is the client's, not drawn)
+    mx, mw, my, mh = 158.0, 50.0, 122.0, 34.0
+    sh.line(bx + bw, y, mx, y)
     sh.text(152, y - 1.2, "C2", 1.35, "middle")
     ticks(sh, 152, y, n_ac)
     sh.rect(mx, my, mw, mh, "box")
-    sh.text(mx + 1.2, my + 3, "CONSUMER MDB - PCC", 1.8, bold=True)
-    mdb = d["mdb"]
-    switch(sh, 168, y, 0, "breaker")
-    sh.lines(168, 129.5, ["SOLAR PV", "FEED", f"{mdb['solar_way_a']}A {mdb['solar_way_poles']}"], 1.45, "middle",
-             bold_first=True)
-    circuits = mdb["circuits"][:5]
-    step = 6.0 if len(circuits) <= 4 else 5.0
-    bus_top, bus_bot = y - 4, y + 6 + step * (len(circuits) - 1) + 1.5
-    sh.line(173, y, 180, y)
-    sh.line(180, bus_top, 180, bus_bot, "bus")
-    for i, c in enumerate(circuits):
-        yy = y + 6 + i * step
-        sh.line(180, yy, 186, yy)
-        switch(sh, 189.5, yy, 0, "breaker", h=3.5, k=0.6)
-        sh.add(f'<line x1="193" y1="{yy:.2f}" x2="197.5" y2="{yy:.2f}" class="ln" marker-end="url(#arr)"/>')
-        sh.text(198.5, yy + 0.5, f"{c['rating_a']}A {c['name']}", 1.4, max_w=19)
-    sh.line(180, y, 185, y)
-    switch(sh, 192, y, 0, "rcd", h=7)
-    sh.lines(192, 129.5, ["RCCB", f"{mdb['main_rcd_a']}A {mdb['main_rcd_ma']}mA"], 1.45, "middle", bold_first=True)
-    sh.line(199, y, 204, y)
-    switch(sh, 209, y, 0, "isolator")
-    sh.lines(209.5, 129.5, ["MAIN SW", f"{mdb['main_switch_a']}A {mdb['main_switch_poles']}"], 1.45, "middle",
-             bold_first=True)
-    sh.line(214, y, 238, y)
+    sh.text(mx + mw / 2, y + 0.9, "CLIENT / CONSUMER DB", 2.2, "middle", True)
+    sh.line(mx + mw, y, 238, y)
     ticks(sh, 222, y, n_ac)
 
-    # Earth bus, MET and electrode
-    sh.line(16, 178, 176, 178, "en")
-    sh.text(24, 176.8, f"PROTECTIVE EARTH {d['earth']['pe_mm2']} mm² G/Y Cu TO MAIN EARTH TERMINAL (MET)", 1.45,
-            cls="grn")
-    sh.rect(176, 175.5, 14, 5, "es")
-    sh.text(183, 178.9, "MET", 1.6, "middle", True, "grn")
-    sh.line(183, my + mh, 183, 175.5, "en")
-    sh.line(190, 178, 195, 178, "es")
-    earth(sh, 195, 178)
-    sh.lines(198, 180.4, ["EARTH ELECTRODE (TT SYSTEM)", "16 mm Ø × 2.4 m Cu-bonded steel rod",
-                          f"R earth < {R.EARTH_RESISTANCE_MAX_OHM} Ω"], 1.4, cls="grn")
+    # Earth: one protective earth cable (cable size only, no MET block / electrode description)
+    sh.line(16, 178, 190, 178, "en")
+    sh.text(24, 176.8, f"PROTECTIVE EARTH {f(d['earth']['pe_mm2'])} mm² G/Y Cu CABLE", 1.45, cls="grn")
+    sh.line(mx + mw / 2, my + mh, mx + mw / 2, 178, "en")
+    sh.dot(mx + mw / 2, 178, "efill")
+    earth(sh, 190, 178)
 
     # Demarcation
     xd = 228.0
@@ -448,94 +382,47 @@ def draw_diagram(sh, d, p):
     sh.text(xd + 2, 30, "TNB OWNERSHIP ►", 2.0, "start", True, "red")
     sh.text(xd - 1, 100, "DEMARCATION / OWNERSHIP BOUNDARY", 1.6, "middle", cls="red", rotate=-90)
 
-    # TNB meter, cut-out, grid
-    tnb = d["tnb"]
-    sh.rect(238, y - 4.5, 12, 9, "hv")
-    sh.text(244, y + 0.4, "kWh", 2.4, "middle", True)
-    sh.text(244, y + 3.3, "IMP ⇄ EXP", 1.2, "middle")
-    sh.lines(244, 124.5, ["KWH", "TNB BI-DIRECTIONAL", "SMART METER (kWh)", tnb["meter"],
-                          "IMPORT & EXPORT REGISTERS"], 1.4, "middle", bold_first=True)
-    sh.line(250, y, 263, y)
-    sh.rect(260, y - 6, 16, 18, "box")
-    fuse(sh, 268, y, 0, 5)
-    sh.circle(265.5, y + 7.5, 0.6, "ln")
-    sh.circle(270.5, y + 7.5, 0.6, "ln")
-    sh.line(266.1, y + 7.5, 269.9, y + 7.5, "hv")
-    sh.text(268, y + 10.6, "N LINK", 1.25, "middle")
-    sh.lines(268, 124.5, ["CO", "TNB CUT-OUT", f"{tnb['cutout_a']}A HRC FUSE", "+ NEUTRAL LINK", "(SEALED BY TNB)"],
-             1.4, "middle", bold_first=True)
-    sh.line(273, y, 295.5, y)
-    ticks(sh, 284, y, n_ac)
-    sh.lines(276.5, y + 4.5, ["SERVICE CABLE", *wrap(tnb["service_cable"], 18, 1.35)], 1.35)
-    sh.circle(300, y, 4.5, "hv")
-    sh.text(300, y + 1.5, "~", 4.5, "middle")
-    sh.lines(300, y - 12, ["TNB LV", "NETWORK", "400/230 V" if phase == 3 else "230 V", "50 Hz"], 1.45, "middle",
-             bold_first=True)
+    # TNB side: two blocks only - TNB kWh meter and TNB grid
+    sh.rect(238, y - 8, 24, 16, "hv")
+    sh.text(250, y + 0.9, "TNB kWh METER", 2.0, "middle", True)
+    sh.line(262, y, 276, y)
+    ticks(sh, 269, y, n_ac)
+    sh.rect(276, y - 8, 30, 16, "hv")
+    sh.text(291, y + 0.9, "TNB GRID", 2.2, "middle", True)
 
 
 def schedule_rows(d, p):
+    """Equipment schedule: TAG + DESCRIPTION only."""
     mod, inv, ac, dc = d["module"], d["inverter"], d["ac"], d["dc_cable"]
-    iso, dspd, mdb, tnb = d["dc_isolator"], d["dc_spd"], d["mdb"], d["tnb"]
-    m_isc = max(g["isc_total"] for g in d["mppts"])
-    voc_max = max(g["voc_max"] for g in d["mppts"])
-    voc_stc = max(g["voc_stc"] for g in d["mppts"])
     ph = d["phase"]
     rows = [
-        ("PV", "PV MODULES", f"{d['array']['n_modules']} × {mod['brand']} {mod['model']}, {f(mod['wattage_wp'])} Wp "
-         f"{mod.get('technology', '')}, Voc {f(mod['voc'])} V, Isc {f(mod['isc'])} A, Vmp {f(mod['vmp'])} V, "
-         f"Imp {f(mod['imp'])} A", f"Pdc = {d['array']['n_modules']} × {f(mod['wattage_wp'])} W = "
-         f"{d['array']['p_dc_kwp']:.2f} kWp"),
-        ("C1", "DC STRING CABLE", f"1C × {f(dc['size_mm2'])} mm² PV1-F XLPO Cu 1.0/1.5 kV DC (EN 50618), red (+) / "
-         f"black (-), UV-PVC / GI conduit, {f(dc['length_m'])} m",
-         f"Iz {dc['iz_a']:.1f} A ≥ 1.25 × Isc = {1.25 * mod['isc']:.1f} A; ΔV {dc['vd_pct']:.2f} % ≤ 1.0 %"),
+        ("PV", f"PV MODULES - {d['array']['n_modules']} × {mod['brand']} {mod['model']}, {f(mod['wattage_wp'])} Wp "
+               f"({d['array']['p_dc_kwp']:.2f} kWp)"),
+        ("C1", f"DC STRING CABLE - 1C × {f(dc['size_mm2'])} mm² PV1-F XLPO Cu, {f(dc['length_m'])} m"),
     ]
     if any(g["fuse_a"] for g in d["mppts"]):
         fa = max(g["fuse_a"] or 0 for g in d["mppts"])
-        rows.append(("SF", "STRING FUSES", f"gPV {fa} A 1000 V DC fuse in + and - of each paralleled string",
-                     f"I fuse ≥ 1.25 × Isc = {1.25 * mod['isc']:.1f} A; ≤ module max series fuse"))
+        rows.append(("SF", f"STRING FUSES - gPV {fa} A 1000 V DC, in + and - of each paralleled string"))
     rows += [
-        ("DCI", "DC ISOLATOR", f"{iso['poles']}-pole {iso['voltage_v']} V DC {iso['current_a']} A, "
-         f"{iso['utilisation']}, IP65, lockable, label \"DC ISOLATOR - LOCKABLE\"",
-         f"≥ 1.25 × Isc,mppt = {1.25 * m_isc:.1f} A; ≥ Voc,max {voc_max:.0f} V"),
-        ("DSPD", "DC SURGE PROTECTION", f"Type II DC SPD, Ucpv {dspd['ucpv_v']} V, In {dspd['in_ka']} kA, "
-         f"Imax {dspd['imax_ka']} kA, MS IEC 61643-12, one per MPPT",
-         f"Ucpv ≥ 1.2 × Voc = {1.2 * voc_stc:.0f} V"),
-        ("INV", "GRID-TIE INVERTER", f"{inv['brand']} {inv['model']}, {ac['p_ac_kw']:.2f} kWac, "
-         f"{'230 V 1-ph' if ph == 1 else '400 V 3-ph'} 50 Hz, {inv['mppt_count']} MPPT, PF "
-         f"{inv.get('power_factor', '> 0.95')}, THD {inv.get('thd', '< 5 %')}",
-         f"Voc,max {voc_max:.0f} V < {inv['max_dc_voltage_v']} V; Isc {m_isc:.2f} A ≤ {inv['max_isc_per_mppt_a']} A"),
-        ("C2", "AC CABLE", f"{ac['cable']['spec']}, inverter → ACDB → MDB, {f(ac['cable']['length_m'])} m total",
-         f"Iz {f(ac['cable']['iz_a'])} A ≥ In {ac['mcb']['a']} A; ΔV {ac['cable']['vd_pct']:.2f} % ≤ 1.0 %"),
-        ("ACI", "AC ISOLATOR", f"{ac['isolator']['a']} A {ac['isolator']['poles']}-pole, "
-         f"{ac['isolator']['utilisation']}, lockable, label \"SOLAR PV AC ISOLATOR - LOCKABLE\"",
-         f"≥ 1.25 × Iac = {ac['mcb_min']:.1f} A"),
-        ("ACDB", "SOLAR AC DB", "\"SOLAR AC DISTRIBUTION BOARD (ACDB)\", IP55 indoor / IP65 outdoor, "
-         "warning \"DUAL SUPPLY - ISOLATE BOTH BEFORE SERVICING\"", "Dedicated sub-board before tie-in"),
-        ("MCB-S", "SOLAR AC MCB", f"{ac['mcb']['a']} A {ac['mcb']['poles']}, Type C curve, Icu {ac['mcb']['ka']} kA",
-         f"Iac,max {ac['i_ac']:.2f} A; In ≥ 1.25 × Iac = {ac['mcb_min']:.1f} A"),
-        ("RCD-S", "SOLAR AC RCD", f"{ac['rcd']['a']} A {ac['rcd']['poles']}-pole, {ac['rcd']['ma']} mA, "
-         f"{ac['rcd']['type']}", f"Rating ≥ MCB {ac['mcb']['a']} A (MS IEC 60364-4-41)"),
-        ("ASPD", "AC SURGE PROTECTION", f"Type II AC SPD {ac['spd']['poles']}-pole, Uc {ac['spd']['uc_v']} V, "
-         f"In {ac['spd']['in_ka']} kA, Imax {ac['spd']['imax_ka']} kA, c/w {ac['spd']['backup_a']} A backup MCB",
-         f"Uc ≥ {ac['spd']['uc_v']} V"),
-        ("PCC", "MDB SOLAR WAY", f"Dedicated {mdb['solar_way_a']} A {mdb['solar_way_poles']} MCB in existing "
-         f"consumer MDB, labelled \"SOLAR PV FEED\"", "Point of common coupling"),
-        ("MDB", "CONSUMER MAIN DB", f"Main switch {mdb['main_switch_a']} A {mdb['main_switch_poles']}; RCCB "
-         f"{mdb['main_rcd_a']} A {mdb['main_rcd_ma']} mA; existing domestic circuits", "Existing - verify on site"),
-        ("E", "EARTHING", f"{d['earth']['bond_mm2']} mm² G/Y module bonding; {d['earth']['pe_mm2']} mm² PE to MET; "
-         f"{R.EARTH_ROD.lower()}", f"R earth < {R.EARTH_RESISTANCE_MAX_OHM} Ω"),
-        ("KWH", "TNB METER", f"TNB bi-directional smart meter (kWh), {tnb['meter'].lower()}, import & export "
-         f"registers - by TNB", "After Form G & H validation"),
-        ("CO", "TNB CUT-OUT", f"{tnb['cutout_a']} A HRC cut-out fuse + neutral link, service cable "
-         f"{tnb['service_cable']} - by TNB", "Sealed by TNB"),
+        ("INV", f"GRID-TIE INVERTER - {inv['brand']} {inv['model']}, {ac['p_ac_kw']:.2f} kWac, "
+                f"{'230 V 1-ph' if ph == 1 else '400 V 3-ph'} 50 Hz (DC switch, DC SPD and AC SPD built in)"),
+        ("C2", f"AC CABLE - {ac['cable']['spec']}, {f(ac['cable']['length_m'])} m"),
+        ("ACDB", "SOLAR ACDB - IP65, warning \"DUAL SUPPLY - ISOLATE BOTH BEFORE SERVICING\""),
+        ("MCB-S", f"SOLAR AC MCB - {ac['mcb']['a']} A {ac['mcb']['poles']}, Type C, {ac['mcb']['ka']} kA"),
+        ("PVM", "PV METER - kWh meter for PV generation, inside the Solar ACDB"),
+        ("DB", "CLIENT / CONSUMER DB - existing"),
+        ("E", f"EARTHING - {f(d['earth']['pe_mm2'])} mm² G/Y Cu protective earth cable; "
+              f"{d['earth']['bond_mm2']} mm² G/Y module bonding"),
+        ("KWH", "TNB kWh METER - bi-directional smart meter, by TNB"),
+        ("GRID", "TNB GRID"),
     ]
     return rows
 
 
 def draw_schedule(sh, d, p):
     x0, y0 = 10.0, 191.0
-    sh.text(12, y0 + 4.2, "EQUIPMENT SCHEDULE & SIZING BASIS", 2.2, bold=True)
-    cols = [("TAG", 12), ("DESCRIPTION", 30), ("SPECIFICATION", 160), ("SIZING BASIS / CHECK", 104)]
+    sh.text(12, y0 + 4.2, "EQUIPMENT SCHEDULE", 2.2, bold=True)
+    cols = [("TAG", 14), ("DESCRIPTION", 292)]
     rows = schedule_rows(d, p)
     rh = min(4.4, (286.0 - (y0 + 10.5)) / len(rows))
     yh = y0 + 6
@@ -640,14 +527,13 @@ def draw_side(sh, d, p):
 
     notes = [
         f"Installation to {', '.join(R.GOVERNING_STANDARDS[:4])}; symbols to IEC 60617.",
-        "Indirect (behind-the-meter) connection: PV feeds the consumer MDB via a dedicated solar way; "
+        "Indirect (behind-the-meter) connection: PV feeds the client / consumer DB; "
         "TNB meter is bi-directional.",
-        "TT earthing. All exposed metalwork bonded; SPD earth leads < 0.5 m; earth electrode R < 10 Ω.",
-        "DC and AC isolators lockable in the OFF position and within sight of the inverter.",
-        "Warning labels at MDB, ACDB, meter and inverter: \"DUAL SUPPLY - ISOLATE BOTH BEFORE SERVICING\".",
+        "All exposed metalwork bonded with the protective earth cable.",
+                "Warning labels at consumer DB, ACDB, meter and inverter: \"DUAL SUPPLY - ISOLATE BOTH BEFORE SERVICING\".",
         "Inverter protection settings per TNB table above; to be tested and recorded at commissioning "
         "(MS IEC 62446).",
-        "Cable lengths and existing MDB arrangement to be verified on site.",
+        "Cable lengths and existing DB arrangement to be verified on site.",
     ]
     y += 3
     sh.text(x, y + 2, "GENERAL NOTES", 1.9, bold=True)
@@ -677,16 +563,13 @@ def draw_legend(sh, x, y, w, y_max):
         ("PV MODULE", lambda cx, cy: pv_module(sh, cx + 1, cy, 7, 3.6)),
         ("SWITCH-DISCONNECTOR", lambda cx, cy: switch(sh, cx, cy, 0, "isolator", 4.5, 0.75)),
         ("CIRCUIT BREAKER (MCB)", lambda cx, cy: switch(sh, cx, cy, 0, "breaker", 4.5, 0.75)),
-        ("RCD / RCCB", lambda cx, cy: switch(sh, cx + 1, cy, 0, "rcd", 5.0, 0.75)),
-        ("FUSE", lambda cx, cy: fuse(sh, cx, cy, 0, 4.5)),
-        ("SURGE PROTECTIVE DEVICE", lambda cx, cy: spd(sh, cx, cy, 0, 4.5)),
-        ("EARTH ELECTRODE", lambda cx, cy: earth(sh, cx, cy - 2)),
+                ("FUSE", lambda cx, cy: fuse(sh, cx, cy, 0, 4.5)),
+                ("EARTH", lambda cx, cy: earth(sh, cx, cy - 2)),
         ("EARTH CONDUCTOR", lambda cx, cy: sh.line(cx - 4.5, cy, cx + 4.5, cy, "en")),
         ("ENCLOSURE / BOARD", lambda cx, cy: sh.rect(cx - 4.5, cy - 1.8, 9, 3.6, "box")),
         ("OWNERSHIP BOUNDARY", lambda cx, cy: sh.line(cx - 4.5, cy, cx + 4.5, cy, "dm")),
         ("No. OF CONDUCTORS", lambda cx, cy: (sh.line(cx - 4.5, cy, cx + 4.5, cy), ticks(sh, cx, cy, 4))),
-        ("PADLOCK = LOCKABLE OFF", lambda cx, cy: padlock(sh, cx, cy - 0.7)),
-    ]
+            ]
     rows = (len(items) + 1) // 2
     rh = min(5.2, (y_max - y - 6) / rows)
     if rh < 3.6:

@@ -128,9 +128,8 @@ function summaryHtml(s) {
     ['System', `${s.p_dc_kwp} kWp / ${s.p_ac_kw} kWac (DC/AC ${s.dc_ac_ratio}) · ${s.supply}`],
     ['Strings', (s.strings || []).map((g) => `MPPT${g.mppt}: ${g.parallel}×${g.series} (Voc max ${g.voc_max_v} V)`).join(', ')],
     ['DC cable', `${s.dc_cable_mm2} mm² · ΔV ${s.vd_dc_pct}%`],
-    ['DC isolator / SPD', `${s.dc_isolator} · Ucpv ${s.dc_spd_ucpv_v} V${s.string_fuse_a ? ` · string fuses ${s.string_fuse_a} A` : ''}`],
-    ['AC MCB / RCD', `${s.ac_mcb} · ${s.ac_rcd}`],
-    ['AC isolator', s.ac_isolator],
+    ...(s.string_fuse_a ? [['String fuses', `${s.string_fuse_a} A`]] : []),
+    ['AC MCB', s.ac_mcb],
     ['AC cable', `${s.ac_cable} · ΔV ${s.vd_ac_pct}%`],
     ['Total voltage drop', `${s.vd_total_pct}%`],
   ];
