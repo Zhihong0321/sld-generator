@@ -10,7 +10,11 @@
       "type": "object",
       "description": "Title block. Blank strings are allowed; they print as blanks.",
       "properties": {
-        "title": { "type": "string" },
+        "title": { "type": "string", "description": "Legacy field, no longer printed" },
+        "project_title": { "type": "string", "description": "Title block Project Title; default \"<kWp>kWp Solar System\"" },
+        "drawing_title": { "type": "string", "description": "Title block Drawing Title; default \"Single Line Diagram\"" },
+        "integrator_name": { "type": "string", "description": "Solar System Integrator; default Eternalgy Sdn. Bhd." },
+        "integrator_address": { "type": "string" },
         "account_holder": { "type": "string", "description": "Exactly as on the TNB bill" },
         "address": { "type": "string" },
         "tnb_account_no": { "type": "string", "description": "12 digits" },

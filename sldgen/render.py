@@ -5,7 +5,7 @@ Sheet zones:
                                     inverter, then AC left-to-right to the TNB grid
   schedule     x 10-316, y 191-287  equipment schedule with full specifications
   side column  x 316-410            protection settings, design checks, notes,
-                                    QP / CP endorsement blocks, title block
+                                    title block (follows the Eternalgy sheet)
 """
 
 import math
@@ -14,6 +14,7 @@ from xml.sax.saxutils import escape
 from . import rules as R
 
 W, H = 420, 297
+SCHED_W = 155.0         # equipment schedule width; the QP / CP endorsement blocks sit to its right
 FONT = "Arial, Helvetica, sans-serif"
 CHAR_W = 0.56          # average glyph advance as a fraction of the font size
 GREEN = "#1a7f37"
@@ -422,11 +423,11 @@ def schedule_rows(d, p):
 def draw_schedule(sh, d, p):
     x0, y0 = 10.0, 191.0
     sh.text(12, y0 + 4.2, "EQUIPMENT SCHEDULE", 2.2, bold=True)
-    cols = [("TAG", 14), ("DESCRIPTION", 292)]
+    cols = [("TAG", 14), ("DESCRIPTION", SCHED_W - 14)]
     rows = schedule_rows(d, p)
     rh = min(4.4, (286.0 - (y0 + 10.5)) / len(rows))
     yh = y0 + 6
-    sh.rect(x0, yh, 306, 4.5, "hdr")
+    sh.rect(x0, yh, SCHED_W, 4.5, "hdr")
     x = x0
     for name, w in cols:
         sh.text(x + 1, yh + 3.2, name, 1.7, bold=True)
@@ -438,7 +439,7 @@ def draw_schedule(sh, d, p):
             sh.text(x + 1, y + rh * 0.7, r[i], 1.6, bold=(i == 0), max_w=w - 2)
             x += w
         y += rh
-        sh.line(x0, y, x0 + 306, y, "th")
+        sh.line(x0, y, x0 + SCHED_W, y, "th")
     x = x0
     for _, w in cols[:-1]:
         x += w
@@ -509,12 +510,29 @@ def stamp_block(sh, x, y, w, title, rows, stamp_label):
     yy = y + 9
     for label, value in rows:
         sh.text(x + 1.5, yy, label, 1.55, bold=True)
-        sh.text(x + 37, yy, value or "______________________", 1.55, max_w=w - 38)
+        sh.text(x + 36, yy, value or "__________________", 1.55, max_w=w - 37)
         yy += 4.1
     sh.text(x + 1.5, y + h - 7, "Signature: ____________________", 1.55)
     sh.text(x + 1.5, y + h - 2.5, "Date:  ___ / ___ / ______", 1.55)
-    sh.rect(x + w - 24, y + 21, 22, 13.5, "box")
-    sh.text(x + w - 13, y + 28.6, stamp_label, 1.4, "middle")
+    sh.rect(x + w - 24, y + 22.5, 22, 12, "box")
+    sh.text(x + w - 13, y + 29.3, stamp_label, 1.4, "middle")
+
+
+def draw_endorsements(sh, d, p):
+    """QP and CP endorsement blocks, bottom of the diagram frame, right of the schedule."""
+    people = p["people"]
+    y, w = 197.0, 70.0
+    stamp_block(sh, 172.0, y, w, "SEDA MALAYSIA QUALIFIED PERSON (QP)", [
+        ("Qualified Person Name:", people.get("qp_name")),
+        ("SEDA GCPV Cert. No.:", people.get("qp_cert_no")),
+        ("Registered Svc Provider:", people.get("rpvsp")),
+    ], "OFFICIAL QP STAMP")
+    stamp_block(sh, 245.0, y, w, "ST REGISTERED COMPETENT PERSON", [
+        ("Competent Person Name:", people.get("cp_name")),
+        ("Category:", people.get("cp_category") or "PW4 / A0 / PEPC"),
+        ("ST Competency Cert. No.:", people.get("cp_cert_no")),
+        ("ST Contractor Reg. (Form Q):", people.get("contractor_reg_no")),
+    ], "OFFICIAL ST STAMP")
 
 
 def draw_side(sh, d, p):
@@ -530,7 +548,7 @@ def draw_side(sh, d, p):
         "Indirect (behind-the-meter) connection: PV feeds the client / consumer DB; "
         "TNB meter is bi-directional.",
         "All exposed metalwork bonded with the protective earth cable.",
-                "Warning labels at consumer DB, ACDB, meter and inverter: \"DUAL SUPPLY - ISOLATE BOTH BEFORE SERVICING\".",
+        "Warning labels at consumer DB, ACDB, meter and inverter: \"DUAL SUPPLY - ISOLATE BOTH BEFORE SERVICING\".",
         "Inverter protection settings per TNB table above; to be tested and recorded at commissioning "
         "(MS IEC 62446).",
         "Cable lengths and existing DB arrangement to be verified on site.",
@@ -541,21 +559,8 @@ def draw_side(sh, d, p):
     for i, n in enumerate(notes, 1):
         sh.text(x, y, f"{i}.", 1.5)
         y = sh.para(x + 3, y, n, w - 3, 1.5, 1.25) + 0.5
-    people = p["people"]
-    yq = 285.0 - 44 - 2 * 38
-    draw_legend(sh, x, y + 1.5, w, yq - 2)
-    stamp_block(sh, x, yq, w, "SEDA MALAYSIA QUALIFIED PERSON (QP) ENDORSEMENT", [
-        ("Qualified Person Name:", people.get("qp_name")),
-        ("SEDA GCPV Cert. No.:", people.get("qp_cert_no")),
-        ("Registered Svc Provider:", people.get("rpvsp")),
-    ], "OFFICIAL QP STAMP")
-    stamp_block(sh, x, yq + 38, w, "SURUHANJAYA TENAGA (ST) REGISTERED COMPETENT PERSON", [
-        ("Competent Person Name:", people.get("cp_name")),
-        ("Category:", people.get("cp_category") or "PW4 / A0 / PEPC"),
-        ("ST Competency Cert. No.:", people.get("cp_cert_no")),
-        ("ST Contractor Reg. (Form Q):", people.get("contractor_reg_no")),
-    ], "OFFICIAL ST STAMP")
-    draw_title_block(sh, d, p, x, yq + 76, w, 285.0 - (yq + 76))
+    top = title_column(sh, d, p, x, w, 285.0)
+    draw_legend(sh, x, y + 1.5, w, top - 2)
 
 
 def draw_legend(sh, x, y, w, y_max):
@@ -563,17 +568,16 @@ def draw_legend(sh, x, y, w, y_max):
         ("PV MODULE", lambda cx, cy: pv_module(sh, cx + 1, cy, 7, 3.6)),
         ("SWITCH-DISCONNECTOR", lambda cx, cy: switch(sh, cx, cy, 0, "isolator", 4.5, 0.75)),
         ("CIRCUIT BREAKER (MCB)", lambda cx, cy: switch(sh, cx, cy, 0, "breaker", 4.5, 0.75)),
-                ("FUSE", lambda cx, cy: fuse(sh, cx, cy, 0, 4.5)),
-                ("EARTH", lambda cx, cy: earth(sh, cx, cy - 2)),
+        ("FUSE", lambda cx, cy: fuse(sh, cx, cy, 0, 4.5)),
+        ("EARTH", lambda cx, cy: earth(sh, cx, cy - 2)),
         ("EARTH CONDUCTOR", lambda cx, cy: sh.line(cx - 4.5, cy, cx + 4.5, cy, "en")),
         ("ENCLOSURE / BOARD", lambda cx, cy: sh.rect(cx - 4.5, cy - 1.8, 9, 3.6, "box")),
         ("OWNERSHIP BOUNDARY", lambda cx, cy: sh.line(cx - 4.5, cy, cx + 4.5, cy, "dm")),
         ("No. OF CONDUCTORS", lambda cx, cy: (sh.line(cx - 4.5, cy, cx + 4.5, cy), ticks(sh, cx, cy, 4))),
-            ]
+    ]
     rows = (len(items) + 1) // 2
     rh = min(5.2, (y_max - y - 6) / rows)
-    if rh < 3.6:
-        return
+    rh = max(rh, 3.0)
     sh.text(x, y + 2, "LEGEND", 1.9, bold=True)
     for i, (label, draw) in enumerate(items):
         cx = x + 6 + (i % 2) * (w / 2)
@@ -582,49 +586,146 @@ def draw_legend(sh, x, y, w, y_max):
         sh.text(cx + 7, cy + 0.6, label, 1.4, max_w=w / 2 - 14)
 
 
-def draw_title_block(sh, d, p, x, y, w, h):
-    pr = p["project"]
-    sh.rect(x, y, w, h, "frb")
-    title = pr.get("title", "PROPOSED GRID-CONNECTED SOLAR PV INSTALLATION UNDER SOLAR ATAP SCHEME")
-    yy = sh.para(x + 1.5, y + 3.2, title.upper(), w - 3, 1.85, 1.2, bold=True)
-    sh.line(x, yy - 0.8, x + w, yy - 0.8, "th")
-    rows = [
-        ("ACCOUNT HOLDER", pr.get("account_holder", "")),
-        ("ADDRESS", pr.get("address", "")),
-        ("TNB ACCOUNT NO.", pr.get("tnb_account_no", "")),
-        ("SUPPLY TYPE", d["supply_label"]),
-        ("PV CAPACITY (DC)", f"{d['array']['p_dc_kwp']:.2f} kWp"),
-        ("INVERTER EXPORT (AC)", f"{d['ac']['p_ac_kw']:.2f} kWac"),
-    ]
-    yy += 1.6
-    for label, value in rows:
-        sh.text(x + 1.5, yy, label, 1.4, bold=True)
-        vrows = wrap(value, w - 31, 1.5)[:2]
-        for i, v in enumerate(vrows):
-            sh.text(x + 30, yy + i * 1.9, v, 1.5)
-        yy += 2.0 + 1.9 * (len(vrows) - 1) + 0.6
-    sh.line(x, yy - 1.4, x + w, yy - 1.4, "th")
-    cells = [("DRAWING NO.", pr.get("drawing_no", "")), ("REV", pr.get("revision", "")),
-             ("SCALE", "NTS"), ("SHEET", "1 OF 1")]
-    widths = [40, 14, 16, 20]
-    cx = x
-    for (label, value), cw in zip(cells, widths):
-        sh.text(cx + 1.2, yy + 0.4, label, 1.25, bold=True)
-        sh.text(cx + 1.2, yy + 3.0, value, 1.7, bold=True, max_w=cw - 2)
-        cx += cw
-        sh.line(cx, yy - 1.4, cx, yy + 4.2, "th")
-    yy += 4.2
-    sh.line(x, yy, x + w, yy, "th")
-    cells = [("DRAWN", pr.get("drawn_by", "")), ("CHECKED", pr.get("checked_by", "")),
-             ("APPROVED", pr.get("approved_by", "")), ("DATE", pr.get("date", ""))]
-    widths = [20, 20, 22, 28]
-    cx = x
-    for (label, value), cw in zip(cells, widths):
-        sh.text(cx + 1.2, yy + 1.9, label, 1.25, bold=True)
-        sh.text(cx + 1.2, yy + 4.5, value, 1.6, max_w=cw - 2)
-        cx += cw
-        if cx < x + w:
-            sh.line(cx, yy, cx, y + h, "th")
+# Integrator details printed in the title block when the project does not give its own.
+DEFAULT_INTEGRATOR = ("Eternalgy Sdn. Bhd.", "21-01, Jln Mutiara Emas 10 / 19, Tmn Mount Austin, 81100 Johor Bahru")
+
+
+def nice_date(v):
+    """2026-11-19 -> 19 November 2026. Anything else is printed as given."""
+    try:
+        from datetime import datetime
+        dt = datetime.strptime(str(v).strip(), "%Y-%m-%d")
+        return f"{dt.day} {dt.strftime('%B %Y')}"
+    except (ValueError, TypeError):
+        return str(v or "").strip()
+
+
+def title_column(sh, d, p, x, w, y_bottom):
+    """Title block, top to bottom as on the Eternalgy sheets: copyright note, revision table,
+    PV module summary, logo, client, integrator, project title, drawing title, data grid.
+    Anchored to y_bottom; returns the y of its top edge. Never raises on missing data."""
+    pr, mod = p["project"], d["module"]
+    tx = x + 2.0
+    inner = w - 4.0
+    try:
+        from .pe import address_lines, logo_data_uri
+        uri = logo_data_uri()
+    except Exception:                      # logo / helper unavailable: text fallback, sheet still made
+        uri, address_lines = None, None
+
+    def addr_rows(text, width, size):
+        rows = address_lines(text, width) if address_lines else wrap(text, width, size)
+        return rows or []
+
+    def label(y, t):
+        sh.text(tx, y + 2.2, t, 1.1, bold=True)
+
+    secs = []   # (height, draw(y0))
+
+    def copyright_(y0):
+        sh.text(tx, y0 + 3.6, "THIS DRAWING IS COPYRIGHT PROTECTED", 1.5)
+        for i, t in enumerate(["CONTRACTORS MUST CHECK ALL DIMENSIONS ON", "SITE . ONLY FIGURED",
+                               "DIMENSIONS ARE TO BE WORKED. DISCREPANCIES", "MUST BE REPORTED IMMEDIATELY TO",
+                               "ARCHITECT/ENGINEER BEFROE PROCEEDING."]):
+            sh.text(tx, y0 + 7.6 + i * 1.7, t, 1.3, max_w=inner)
+    secs.append((16.0, copyright_))
+
+    def revisions(y0):
+        sh.rect(tx, y0 + 1.5, inner, 12.0, "fr")
+        sh.line(tx, y0 + 4.7, tx + inner, y0 + 4.7, "th")
+        sh.line(tx + 6, y0 + 1.5, tx + 6, y0 + 13.5, "th")
+        sh.line(tx + 17, y0 + 1.5, tx + 17, y0 + 13.5, "th")
+        sh.text(tx + 1.2, y0 + 4.0, "NO", 1.2)
+        sh.text(tx + 7.2, y0 + 4.0, "TARIKH", 1.2)
+    secs.append((15.0, revisions))
+
+    lines = [f"{str(mod.get('brand', '')).upper()} PV MODULE".strip(),
+             f"{mod.get('model', '')} X {d['array']['n_modules']} NOS", ""]
+    for i, st in enumerate(d["strings"], 1):
+        lines.append(f"STRING {i}: {f(mod['wattage_wp'])}W x {st['modules']} NOS")
+
+    def summary(y0):
+        for i, t in enumerate(lines):
+            sh.text(tx, y0 + 4.6 + i * 3.0, t, 2.1, max_w=inner)
+    secs.append((3.0 + 3.0 * len(lines) + 2.0, summary))
+
+    def logo(y0):
+        sh.add(f'<rect x="{tx:.2f}" y="{y0 + 1.5:.2f}" width="{inner:.2f}" height="10" fill="#1d1d1b"/>')
+        if uri:
+            lw = inner - 10
+            lh = lw * 85 / 640
+            sh.add(f'<image x="{tx + 5:.2f}" y="{y0 + 6.5 - lh / 2:.2f}" width="{lw:.2f}" height="{lh:.2f}" '
+                   f'href="{uri}"/>')
+        else:
+            sh.add(f'<text x="{x + w / 2:.2f}" y="{y0 + 8.2:.2f}" font-size="3" text-anchor="middle" '
+                   f'font-weight="bold" fill="#fff">ETERNALGY</text>')
+    secs.append((13.0, logo))
+
+    cname = wrap(pr.get("account_holder", ""), inner, 2.4) if pr.get("account_holder") else []
+    caddr = addr_rows(pr.get("address", ""), inner, 2.0)
+
+    def client(y0):
+        label(y0, "Client :-")
+        yy = y0 + 6.2
+        for t in cname:
+            sh.text(tx, yy, t, 2.4, max_w=inner)
+            yy += 3.1
+        yy += 1.6
+        for t in caddr:
+            sh.text(tx, yy, t, 2.0, max_w=inner)
+            yy += 2.6
+    secs.append((max(16.0, 9.0 + 3.1 * len(cname) + 1.6 + 2.6 * len(caddr)), client))
+
+    iname = pr.get("integrator_name") or DEFAULT_INTEGRATOR[0]
+    iaddr = addr_rows(pr.get("integrator_address") or DEFAULT_INTEGRATOR[1], inner, 1.9)
+
+    def integrator(y0):
+        label(y0, "Solar System Integrator :-")
+        sh.text(tx, y0 + 6.6, iname, 2.3, max_w=inner)
+        for i, t in enumerate(iaddr):
+            sh.text(tx, y0 + 10.6 + i * 2.5, t, 1.9, max_w=inner)
+    secs.append((12.0 + 2.5 * len(iaddr), integrator))
+
+    kwp = d["array"]["p_dc_kwp"]
+
+    def project(y0):
+        label(y0, "Project Title :-")
+        sh.text(x + w / 2, y0 + 7.4, pr.get("project_title") or f"{f(round(kwp, 2))}kWp Solar System",
+                2.6, "middle", max_w=inner)
+    secs.append((10.0, project))
+
+    def drawing(y0):
+        label(y0, "Drawing Title :-")
+        sh.text(x + w / 2, y0 + 7.4, pr.get("drawing_title") or "Single Line Diagram", 2.6, "middle", max_w=inner)
+    secs.append((10.0, drawing))
+
+    def grid(y0):
+        rows = [("Drawn By", pr.get("drawn_by", "")), ("Approved By", pr.get("approved_by", "")),
+                ("Date", nice_date(pr.get("date", ""))), ("Scale", "NTS"), ("Revision", pr.get("revision", ""))]
+        rh, mid = 2.9, x + 46
+        for i, (k, v) in enumerate(rows):
+            sh.text(x + 1.5, y0 + 2.1 + i * rh, f"{k} :- {v}".rstrip(), 1.2, max_w=mid - x - 2.5)
+            if i:
+                sh.line(x, y0 + i * rh, mid, y0 + i * rh, "th")
+        sh.line(mid, y0, mid, y0 + rh * len(rows), "th")
+        sh.line(mid, y0 + rh * 2, x + w, y0 + rh * 2, "th")
+        sh.line(mid, y0 + rh * 3, x + w, y0 + rh * 3, "th")
+        sh.text(mid + 1.2, y0 + rh * 2 + 2.1, f"Drawing No :- {pr.get('drawing_no', '')}", 1.2, max_w=x + w - mid - 2)
+    secs.append((2.9 * 5 + 0.5, grid))
+
+    total = sum(h for h, _ in secs)
+    top = y_bottom - total
+    y = top
+    for i, (h, draw) in enumerate(secs):
+        try:
+            draw(y)
+        except Exception:                  # one bad field must not blank the rest of the block
+            sh.text(tx, y + 4, "(title block entry could not be drawn)", 1.2, cls="red")
+        y += h
+        if i < len(secs) - 1:
+            sh.line(x, y, x + w, y, "fr")
+    sh.rect(x, top, w, total, "frb")
+    return top
 
 
 def render(d, p):
@@ -634,6 +735,7 @@ def render(d, p):
     sh.line(10, 191, 316, 191, "fr")
     draw_diagram(sh, d, p)
     draw_schedule(sh, d, p)
+    draw_endorsements(sh, d, p)
     draw_side(sh, d, p)
     if d["issues"].errors:
         sh.add(f'<text x="163" y="110" font-size="13" text-anchor="middle" font-weight="bold" fill="{RED}" '
