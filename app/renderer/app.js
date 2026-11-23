@@ -313,9 +313,29 @@ async function drawVersion() {
   } catch { /* version line is optional */ }
 }
 
+// Update notice in the left nav panel: stays visible until the update is installed.
+function drawNavUpdate() {
+  const s = UP.state || {};
+  const n = $('#navUpdate');
+  let mode = null, title = '', sub = '';
+  if (s.type === 'check' && s.ok && s.available) {
+    mode = 'update'; title = 'UPDATE AVAILABLE';
+    sub = s.behind > 1 ? `${s.behind} changes · click to update` : 'Click to update';
+  } else if (s.type === 'progress') { mode = 'busy'; title = 'UPDATING…'; sub = s.msg || ''; }
+  else if (s.type === 'applied' && s.ok) { mode = 'restart'; title = 'UPDATE INSTALLED'; sub = 'Click to restart'; }
+  n.hidden = !mode; n.dataset.mode = mode || '';
+  n.classList.toggle('ok', mode === 'restart');
+  $('#navUpdateTitle').textContent = title; $('#navUpdateSub').textContent = sub;
+}
+$('#navUpdate').addEventListener('click', () => {
+  if ($('#navUpdate').dataset.mode === 'restart') window.sld.restart();
+  else show('settings');
+});
+
 window.sld.onUpdate((s) => {
   UP.state = s;
   drawUpdateCard();
+  drawNavUpdate();
   if (s.type === 'check' && s.ok && s.available && !UP.dismissed) {
     bar(`<span class="grow"><b>Update available</b> · ${s.behind > 1 ? s.behind + ' changes' : esc((s.changes?.[0]?.msg) || '1 change')}</span>
       <button class="ghost" data-up="details">Details</button><button class="ghost" data-up="later">Later</button><button class="primary" data-up="apply">Update now</button>`);
