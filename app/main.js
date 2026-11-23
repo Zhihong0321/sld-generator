@@ -117,6 +117,8 @@ function buildProject(form, library) {
   if (!counts.length) counts = evenSplit(qty, inv.mppt_count || 2);
   p.array = { strings: counts.map((n, i) => ({ mppt: i + 1, modules: n })) };
   p.cables = { dc_length_m: num(f.dc_length_m, 20), ac_length_m: num(f.ac_length_m, 15) };
+  p.overrides = p.overrides || {};
+  if (num(f.ac_mcb_a, 0) > 0) p.overrides.ac_mcb_a = num(f.ac_mcb_a, 0);   // blank = engine calculates the MCB
   p.pcc = p.pcc || {};
   p.pcc.main_switch_a = num(f.main_switch_a, 63);
   p.pcc.main_rcd_a = num(f.main_rcd_a, 63);

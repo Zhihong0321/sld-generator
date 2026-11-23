@@ -330,14 +330,15 @@ def draw_diagram(sh, d, p):
     compliance = inv.get("compliance", "MS IEC 62109-1/-2, IEEE 1547")
     if "island" not in compliance.lower():
         compliance += "; built-in anti-islanding"
-    rows += wrap(compliance + "; integrated DC switch, DC SPD and AC SPD", 60, 1.7)
+    extra = "; integrated DC switch" if "SPD" in compliance.upper() else "; integrated DC switch, DC SPD and AC SPD"
+    rows += wrap(compliance + extra, 60, 1.7)
     sh.lines(18, 158.5, rows, 1.7, bold_first=True)
 
     # AC chain ------------------------------------------------------------------------------
     y = y_main
     x0 = inv_x + inv_w
     cab = ac["cable"]
-    sh.line(x0, y, 96, y)
+    sh.line(x0, y, 101, y)          # cable runs through the ACDB wall right up to the MCB
     ticks(sh, 86, y, n_ac)
     sh.lines(55, y + 4.5, ["C2 - AC CABLE",
                            *wrap(cab["spec"], 23, 1.45),

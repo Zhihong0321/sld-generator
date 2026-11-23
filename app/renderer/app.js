@@ -85,7 +85,7 @@ $('#aiBtn').addEventListener('click', async () => {
     const f = r.fields || {};
     if (f.phase) setField('phase', Number(f.phase) === 1 ? 1 : 3, true);
     const filled = [];
-    for (const k of ['module', 'qty', 'inverter', 'strings', 'dc_length_m', 'ac_length_m', 'main_switch_a', 'main_rcd_a',
+    for (const k of ['module', 'qty', 'inverter', 'strings', 'dc_length_m', 'ac_length_m', 'ac_mcb_a', 'main_switch_a', 'main_rcd_a',
       'main_rcd_ma', 'account_holder', 'address', 'tnb_account_no', 'drawing_no', 'drawn_by', 'qp_name', 'qp_cert_no',
       'rpvsp', 'cp_name', 'cp_category', 'cp_cert_no', 'contractor_reg_no']) {
       if (setField(k, f[k], true)) filled.push(k);
@@ -189,6 +189,7 @@ async function reviseFrom(file, rev) {
   setField('qty', strings.reduce((a, b) => a + b, 0));
   setField('strings', strings.join(','));
   setField('dc_length_m', p.cables?.dc_length_m); setField('ac_length_m', p.cables?.ac_length_m);
+  setField('ac_mcb_a', p.overrides?.ac_mcb_a);
   setField('main_switch_a', p.pcc?.main_switch_a); setField('main_rcd_a', p.pcc?.main_rcd_a); setField('main_rcd_ma', p.pcc?.main_rcd_ma);
   for (const k of ['account_holder', 'address', 'tnb_account_no', 'drawing_no', 'drawn_by']) setField(k, p.project?.[k]);
   for (const k of ['qp_name', 'qp_cert_no', 'rpvsp', 'cp_name', 'cp_category', 'cp_cert_no', 'contractor_reg_no']) setField(k, p.people?.[k]);
